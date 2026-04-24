@@ -3,35 +3,77 @@ import { pool } from '../config/database';
 
 const router = Router();
 
+// Allowed sort columns for sequences
+const SEQUENCE_SORT_COLUMNS: Record<string, string> = {
+  name: 's.name',
+  status: 's.status',
+  triggerType: 's.trigger_type',
+  totalContacts: 's.total_contacts',
+  activeContacts: 's.active_contacts',
+  completedContacts: 's.completed_contacts',
+  conversionRate: 's.conversion_rate',
+  createdAt: 's.created_at',
+};
+
 // Get all sequences
 router.get('/', async (req, res) => {
   try {
-    const { teamId } = req.query;
+    const { teamId, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
 
-    const result = await pool.query(
-      `SELECT s.*, u.first_name, u.last_name,
+    const sortColumn = SEQUENCE_SORT_COLUMNS[sortBy as string] || 's.created_at';
+    const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    let query = `SELECT s.*, u.first_name, u.last_name,
         (SELECT COUNT(*) FROM sequence_steps ss WHERE ss.sequence_id = s.id) as step_count
        FROM sequences s
        LEFT JOIN users u ON s.created_by = u.id
-       WHERE s.team_id = $1
-       ORDER BY s.created_at DESC`,
-      [teamId]
-    );
+       WHERE 1=1`;
+    let countQuery = `SELECT COUNT(*) FROM sequences s WHERE 1=1`;
+    const params: any[] = [];
+    const countParams: any[] = [];
+    let paramIndex = 1;
+    let countParamIndex = 1;
 
-    res.json(result.rows.map(s => ({
-      id: s.id,
-      name: s.name,
-      description: s.description,
-      status: s.status,
-      triggerType: s.trigger_type,
-      totalContacts: s.total_contacts,
-      activeContacts: s.active_contacts,
-      completedContacts: s.completed_contacts,
-      conversionRate: parseFloat(s.conversion_rate) || 0,
-      stepCount: parseInt(s.step_count) || 0,
-      createdBy: s.first_name ? `${s.first_name} ${s.last_name}` : null,
-      createdAt: s.created_at,
-    })));
+    if (teamId) {
+      query += ` AND s.team_id = $${paramIndex++}`;
+      countQuery += ` AND s.team_id = $${countParamIndex++}`;
+      params.push(teamId);
+      countParams.push(teamId);
+    }
+
+    query += ` ORDER BY ${sortColumn} ${order} LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limitNum, offset);
+
+    const [result, countResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams)
+    ]);
+
+    const total = parseInt(countResult.rows[0].count);
+
+    res.json({
+      sequences: result.rows.map(s => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        status: s.status,
+        triggerType: s.trigger_type,
+        totalContacts: s.total_contacts,
+        activeContacts: s.active_contacts,
+        completedContacts: s.completed_contacts,
+        conversionRate: parseFloat(s.conversion_rate) || 0,
+        stepCount: parseInt(s.step_count) || 0,
+        createdBy: s.first_name ? `${s.first_name} ${s.last_name}` : null,
+        createdAt: s.created_at,
+      })),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
   } catch (error) {
     console.error('Error fetching sequences:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -183,6 +225,88 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting sequence:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Bulk delete
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'At least one ID is required' });
+    }
+    const result = await pool.query(
+      `DELETE FROM sequences WHERE id = ANY($1::uuid[]) RETURNING id`,
+      [ids]
+    );
+    res.json({ deleted: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk deleting sequences:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Bulk update
+router.post('/bulk-update', async (req, res) => {
+  try {
+    const { ids, updates } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'At least one ID is required' });
+    }
+    const setClauses: string[] = [];
+    const params: any[] = [ids];
+    let paramIndex = 2;
+
+    if (updates.status) {
+      setClauses.push(`status = $${paramIndex++}`);
+      params.push(updates.status);
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+
+    const result = await pool.query(
+      `UPDATE sequences SET ${setClauses.join(', ')} WHERE id = ANY($1::uuid[]) RETURNING id`,
+      params
+    );
+    res.json({ updated: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk updating sequences:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// CSV export
+router.get('/export/csv', async (req, res) => {
+  try {
+    const { teamId } = req.query;
+    let query = 'SELECT * FROM sequences';
+    const params: any[] = [];
+    if (teamId) {
+      query += ' WHERE team_id = $1';
+      params.push(teamId);
+    }
+    query += ' ORDER BY created_at DESC';
+
+    const result = await pool.query(query, params);
+
+    const headers = ['Name', 'Description', 'Status', 'Trigger Type', 'Total Contacts', 'Active Contacts', 'Completed Contacts', 'Conversion Rate', 'Created At'];
+    const rows = result.rows.map(s => [
+      s.name, s.description, s.status, s.trigger_type, s.total_contacts,
+      s.active_contacts, s.completed_contacts, s.conversion_rate, s.created_at
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${(v || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=sequences.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting sequences:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

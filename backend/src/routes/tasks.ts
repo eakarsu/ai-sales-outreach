@@ -3,10 +3,27 @@ import { pool } from '../config/database';
 
 const router = Router();
 
+// Allowed sort columns for tasks
+const TASK_SORT_COLUMNS: Record<string, string> = {
+  title: 't.title',
+  taskType: 't.task_type',
+  priority: 't.priority',
+  status: 't.status',
+  dueDate: 't.due_date',
+  completedAt: 't.completed_at',
+  createdAt: 't.created_at',
+};
+
 // Get all tasks
 router.get('/', async (req, res) => {
   try {
-    const { teamId, status, assignedTo, priority } = req.query;
+    const { teamId, status, assignedTo, priority, page = 1, limit = 20, sortBy = 'dueDate', sortOrder = 'asc' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const sortColumn = TASK_SORT_COLUMNS[sortBy as string] || 't.due_date';
+    const order = sortOrder === 'desc' ? 'DESC' : 'ASC';
 
     let query = `
       SELECT t.*,
@@ -19,57 +36,86 @@ router.get('/', async (req, res) => {
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN users a ON t.assigned_to = a.id
       LEFT JOIN campaigns camp ON t.campaign_id = camp.id
-      WHERE t.team_id = $1
+      WHERE 1=1
     `;
-    const params: any[] = [teamId];
+    let countQuery = `SELECT COUNT(*) FROM tasks t WHERE 1=1`;
+    const params: any[] = [];
+    const countParams: any[] = [];
+    let paramIndex = 1;
+    let countParamIndex = 1;
+
+    if (teamId) {
+      query += ` AND t.team_id = $${paramIndex++}`;
+      countQuery += ` AND t.team_id = $${countParamIndex++}`;
+      params.push(teamId);
+      countParams.push(teamId);
+    }
 
     if (status) {
+      query += ` AND t.status = $${paramIndex++}`;
+      countQuery += ` AND t.status = $${countParamIndex++}`;
       params.push(status);
-      query += ` AND t.status = $${params.length}`;
+      countParams.push(status);
     }
 
     if (assignedTo) {
+      query += ` AND t.assigned_to = $${paramIndex++}`;
+      countQuery += ` AND t.assigned_to = $${countParamIndex++}`;
       params.push(assignedTo);
-      query += ` AND t.assigned_to = $${params.length}`;
+      countParams.push(assignedTo);
     }
 
     if (priority) {
+      query += ` AND t.priority = $${paramIndex++}`;
+      countQuery += ` AND t.priority = $${countParamIndex++}`;
       params.push(priority);
-      query += ` AND t.priority = $${params.length}`;
+      countParams.push(priority);
     }
 
-    query += ' ORDER BY t.due_date ASC NULLS LAST, t.priority DESC';
+    query += ` ORDER BY ${sortColumn} ${order} NULLS LAST LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limitNum, offset);
 
-    const result = await pool.query(query, params);
+    const [result, countResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams)
+    ]);
 
-    res.json(result.rows.map(t => ({
-      id: t.id,
-      title: t.title,
-      description: t.description,
-      taskType: t.task_type,
-      priority: t.priority,
-      status: t.status,
-      dueDate: t.due_date,
-      completedAt: t.completed_at,
-      contact: t.contact_first_name ? {
-        id: t.contact_id,
-        name: `${t.contact_first_name} ${t.contact_last_name}`,
-        company: t.contact_company,
-      } : null,
-      createdBy: t.creator_first_name ? {
-        id: t.user_id,
-        name: `${t.creator_first_name} ${t.creator_last_name}`,
-      } : null,
-      assignedTo: t.assignee_first_name ? {
-        id: t.assigned_to,
-        name: `${t.assignee_first_name} ${t.assignee_last_name}`,
-      } : null,
-      campaign: t.campaign_name ? {
-        id: t.campaign_id,
-        name: t.campaign_name,
-      } : null,
-      createdAt: t.created_at,
-    })));
+    const total = parseInt(countResult.rows[0].count);
+
+    res.json({
+      tasks: result.rows.map(t => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        taskType: t.task_type,
+        priority: t.priority,
+        status: t.status,
+        dueDate: t.due_date,
+        completedAt: t.completed_at,
+        contact: t.contact_first_name ? {
+          id: t.contact_id,
+          name: `${t.contact_first_name} ${t.contact_last_name}`,
+          company: t.contact_company,
+        } : null,
+        createdBy: t.creator_first_name ? {
+          id: t.user_id,
+          name: `${t.creator_first_name} ${t.creator_last_name}`,
+        } : null,
+        assignedTo: t.assignee_first_name ? {
+          id: t.assigned_to,
+          name: `${t.assignee_first_name} ${t.assignee_last_name}`,
+        } : null,
+        campaign: t.campaign_name ? {
+          id: t.campaign_id,
+          name: t.campaign_name,
+        } : null,
+        createdAt: t.created_at,
+      })),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
   } catch (error) {
     console.error('Error fetching tasks:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -254,6 +300,94 @@ router.get('/stats/summary', async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching task stats:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Bulk delete
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'At least one ID is required' });
+    }
+    const result = await pool.query(
+      'DELETE FROM tasks WHERE id = ANY($1::uuid[]) RETURNING id',
+      [ids]
+    );
+    res.json({ deleted: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk deleting tasks:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Bulk update
+router.post('/bulk-update', async (req, res) => {
+  try {
+    const { ids, updates } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'At least one ID is required' });
+    }
+    const setClauses: string[] = [];
+    const params: any[] = [ids];
+    let paramIndex = 2;
+
+    if (updates.status) {
+      setClauses.push(`status = $${paramIndex++}`);
+      params.push(updates.status);
+    }
+    if (updates.priority) {
+      setClauses.push(`priority = $${paramIndex++}`);
+      params.push(updates.priority);
+    }
+    if (updates.assignedTo) {
+      setClauses.push(`assigned_to = $${paramIndex++}`);
+      params.push(updates.assignedTo);
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+    const result = await pool.query(
+      `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = ANY($1::uuid[]) RETURNING id`,
+      params
+    );
+    res.json({ updated: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk updating tasks:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// CSV export
+router.get('/export/csv', async (req, res) => {
+  try {
+    const { teamId } = req.query;
+    let query = 'SELECT t.*, u.first_name as assignee_first, u.last_name as assignee_last FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id';
+    const params: any[] = [];
+    if (teamId) {
+      query += ' WHERE t.team_id = $1';
+      params.push(teamId);
+    }
+    query += ' ORDER BY t.created_at DESC';
+    const result = await pool.query(query, params);
+
+    const headers = ['Title', 'Type', 'Priority', 'Status', 'Assigned To', 'Due Date', 'Created At'];
+    const rows = result.rows.map(t => [
+      t.title, t.task_type, t.priority, t.status,
+      `${t.assignee_first || ''} ${t.assignee_last || ''}`.trim(),
+      t.due_date, t.created_at
+    ]);
+    const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${(v || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=tasks.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting tasks:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

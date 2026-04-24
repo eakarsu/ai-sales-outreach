@@ -354,6 +354,160 @@ export const initDatabase = async () => {
       )
     `);
 
+    // AI Lead Scores
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_lead_scores (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+        score INTEGER NOT NULL,
+        confidence DECIMAL(5,2) DEFAULT 0,
+        factors JSONB DEFAULT '{}',
+        ai_analysis TEXT,
+        recommendation TEXT,
+        engagement_level VARCHAR(50),
+        buying_signals TEXT[],
+        risk_factors TEXT[],
+        next_best_action TEXT,
+        predicted_close_date DATE,
+        predicted_deal_value DECIMAL(12,2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Personalizations
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_personalizations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+        personalization_type VARCHAR(50) NOT NULL,
+        original_content TEXT,
+        personalized_content TEXT,
+        personalization_factors JSONB DEFAULT '{}',
+        tone VARCHAR(50),
+        industry_context TEXT,
+        company_insights TEXT,
+        role_specific_points TEXT[],
+        pain_points TEXT[],
+        value_propositions TEXT[],
+        ai_confidence DECIMAL(5,2) DEFAULT 0,
+        engagement_prediction DECIMAL(5,2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Best Times
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_best_times (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+        best_day VARCHAR(20),
+        best_time_start TIME,
+        best_time_end TIME,
+        timezone VARCHAR(100),
+        confidence DECIMAL(5,2) DEFAULT 0,
+        historical_data JSONB DEFAULT '{}',
+        ai_reasoning TEXT,
+        engagement_patterns JSONB DEFAULT '{}',
+        optimal_frequency VARCHAR(50),
+        avoid_times TEXT[],
+        industry_insights TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Objection Handlers
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_objections (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        objection_type VARCHAR(100) NOT NULL,
+        objection_text TEXT NOT NULL,
+        response_strategy TEXT,
+        response_templates JSONB DEFAULT '[]',
+        confidence DECIMAL(5,2) DEFAULT 0,
+        success_rate DECIMAL(5,2) DEFAULT 0,
+        use_count INTEGER DEFAULT 0,
+        industry VARCHAR(100),
+        buyer_persona VARCHAR(100),
+        related_objections TEXT[],
+        follow_up_questions TEXT[],
+        ai_insights TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Pipeline Forecasts
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_pipeline_forecasts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        forecast_period VARCHAR(50) NOT NULL,
+        forecast_date DATE NOT NULL,
+        predicted_revenue DECIMAL(12,2) DEFAULT 0,
+        predicted_deals INTEGER DEFAULT 0,
+        confidence DECIMAL(5,2) DEFAULT 0,
+        pipeline_health VARCHAR(50),
+        risk_assessment TEXT,
+        opportunities JSONB DEFAULT '[]',
+        recommendations TEXT[],
+        ai_analysis TEXT,
+        factors_considered JSONB DEFAULT '{}',
+        scenario_best DECIMAL(12,2) DEFAULT 0,
+        scenario_likely DECIMAL(12,2) DEFAULT 0,
+        scenario_worst DECIMAL(12,2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Password Reset Tokens
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        used BOOLEAN DEFAULT false,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Token Blacklist (for logout)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS token_blacklist (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        token TEXT UNIQUE NOT NULL,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Email Verifications
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS email_verifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        token VARCHAR(255) UNIQUE NOT NULL,
+        verified BOOLEAN DEFAULT false,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Add email_verified column to users if not exists
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
     console.log('Database tables created successfully');
   } finally {
     client.release();

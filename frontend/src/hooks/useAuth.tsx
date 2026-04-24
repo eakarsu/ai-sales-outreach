@@ -8,6 +8,7 @@ interface User {
   lastName: string;
   role: string;
   avatarUrl?: string;
+  emailVerified?: boolean;
 }
 
 interface Team {
@@ -59,7 +60,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setTeam(response.data.team);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authAPI.logout();
+    } catch (error) {
+      // Ignore errors - still log out locally
+    }
     localStorage.removeItem('token');
     setUser(null);
     setTeam(null);

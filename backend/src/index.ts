@@ -2,7 +2,11 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import helmet from 'helmet';
 import { initDatabase } from './config/database';
+import { globalErrorHandler, notFoundHandler } from './middleware/errorHandler';
+import { generalLimiter, authLimiter, aiLimiter } from './middleware/rateLimiter';
+import { sanitizeBody } from './middleware/validate';
 
 // Load .env from project root
 dotenv.config({ path: path.resolve(__dirname, '../..', '.env') });
@@ -28,9 +32,21 @@ import reportsRoutes from './routes/reports';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+// Security Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false,
+}));
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Input sanitization
+app.use(sanitizeBody);
+
+// Rate limiting
+app.use('/api/', generalLimiter);
+app.use('/api/auth', authLimiter);
+app.use('/api/ai', aiLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -54,6 +70,12 @@ app.use('/api/reports', reportsRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// 404 handler
+app.use(notFoundHandler);
+
+// Global error handler
+app.use(globalErrorHandler);
 
 // Initialize database and start server
 const start = async () => {

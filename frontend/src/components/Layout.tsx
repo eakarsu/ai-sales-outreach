@@ -18,7 +18,12 @@ import {
   Calendar,
   CheckSquare,
   FileBarChart,
-  Bell
+  Bell,
+  Target,
+  Wand2,
+  Clock,
+  MessageCircle,
+  TrendingUp
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -39,10 +44,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { path: '/meetings', label: 'Meetings', icon: Calendar, section: 'activity' },
     { path: '/tasks', label: 'Tasks', icon: CheckSquare, section: 'activity' },
     { path: '/notifications', label: 'Notifications', icon: Bell, section: 'activity' },
+    { path: '/ai/lead-scores', label: 'Lead Scorer', icon: Target, section: 'ai' },
+    { path: '/ai/personalizations', label: 'Personalization', icon: Wand2, section: 'ai' },
+    { path: '/ai/best-times', label: 'Best Time', icon: Clock, section: 'ai' },
+    { path: '/ai/objections', label: 'Objection Handler', icon: MessageCircle, section: 'ai' },
+    { path: '/ai/forecasts', label: 'Pipeline Forecast', icon: TrendingUp, section: 'ai' },
+    { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles, section: 'ai' },
     { path: '/analytics', label: 'Analytics', icon: BarChart3, section: 'insights' },
     { path: '/ab-tests', label: 'A/B Tests', icon: FlaskConical, section: 'insights' },
     { path: '/reports', label: 'Reports', icon: FileBarChart, section: 'insights' },
-    { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles, section: 'tools' },
     { path: '/integrations', label: 'Integrations', icon: Plug, section: 'tools' },
     { path: '/team', label: 'Team', icon: UsersRound, section: 'settings' },
     { path: '/settings', label: 'Settings', icon: Settings, section: 'settings' },
@@ -65,6 +75,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const sections = [
     { key: 'main', label: 'Main' },
     { key: 'activity', label: 'Activity' },
+    { key: 'ai', label: 'AI Features' },
     { key: 'insights', label: 'Insights' },
     { key: 'tools', label: 'Tools' },
     { key: 'settings', label: 'Account' },

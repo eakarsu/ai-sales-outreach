@@ -11,9 +11,25 @@ const seed = async () => {
 
   try {
     // Clear existing data
-    await client.query('TRUNCATE users, teams, team_members, contacts, email_templates, campaigns, campaign_sequences, emails_sent, ab_tests, analytics, integrations, ai_generations, activity_log, sequences, sequence_steps, meetings, tasks, notifications, reports CASCADE');
+    await client.query(`
+      DO $$ BEGIN
+        TRUNCATE users, teams, team_members, contacts, email_templates, campaigns, campaign_sequences,
+          emails_sent, ab_tests, analytics, integrations, ai_generations, activity_log, sequences,
+          sequence_steps, meetings, tasks, notifications, reports, ai_lead_scores, ai_personalizations,
+          ai_best_times, ai_objections, ai_pipeline_forecasts CASCADE;
+      EXCEPTION WHEN undefined_table THEN NULL;
+      END $$;
+    `);
 
-    // Create 15+ Users
+    // Clear new tables if they exist
+    await client.query(`
+      DO $$ BEGIN
+        TRUNCATE password_reset_tokens, token_blacklist, email_verifications CASCADE;
+      EXCEPTION WHEN undefined_table THEN NULL;
+      END $$;
+    `);
+
+    // Create 16 Users
     const users = [
       { id: uuidv4(), email: 'john.smith@company.com', firstName: 'John', lastName: 'Smith', role: 'admin' },
       { id: uuidv4(), email: 'sarah.johnson@company.com', firstName: 'Sarah', lastName: 'Johnson', role: 'manager' },
@@ -37,13 +53,13 @@ const seed = async () => {
 
     for (const user of users) {
       await client.query(
-        'INSERT INTO users (id, email, password_hash, first_name, last_name, role) VALUES ($1, $2, $3, $4, $5, $6)',
-        [user.id, user.email, passwordHash, user.firstName, user.lastName, user.role]
+        'INSERT INTO users (id, email, password_hash, first_name, last_name, role, email_verified) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [user.id, user.email, passwordHash, user.firstName, user.lastName, user.role, true]
       );
     }
     console.log('Created 16 users');
 
-    // Create 15+ Teams
+    // Create 16 Teams
     const teams = [
       { id: uuidv4(), name: 'Enterprise Sales', description: 'Large enterprise account team', plan: 'enterprise', price: 200 },
       { id: uuidv4(), name: 'SMB Outreach', description: 'Small and medium business team', plan: 'professional', price: 100 },
@@ -86,14 +102,13 @@ const seed = async () => {
       }
     }
 
-    // IMPORTANT: Ensure John Smith (first user) is owner of Enterprise Sales (first team) which has all data
     await client.query(
       'INSERT INTO team_members (team_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (team_id, user_id) DO UPDATE SET role = $3',
       [teams[0].id, users[0].id, 'owner']
     );
     console.log('Created team memberships');
 
-    // Create 20+ Contacts for main team
+    // Create 20 Contacts for main team
     const mainTeam = teams[0];
     const contacts = [
       { firstName: 'Alex', lastName: 'Thompson', email: 'alex.thompson@techcorp.com', company: 'TechCorp Inc', title: 'CTO', status: 'qualified', score: 85 },
@@ -131,7 +146,7 @@ const seed = async () => {
     }
     console.log('Created 20 contacts');
 
-    // Create 18+ Email Templates
+    // Create 18 Email Templates
     const templates = [
       { name: 'Cold Outreach - Initial', subject: 'Quick question about {{company}}', body: 'Hi {{firstName}},\n\nI noticed {{company}} has been expanding rapidly. I wanted to reach out because we help companies like yours streamline their sales outreach with AI.\n\nWould you be open to a quick 15-minute call this week?\n\nBest,\n{{senderName}}', category: 'cold_outreach', aiGenerated: false },
       { name: 'Follow-up #1', subject: 'Following up on my previous email', body: 'Hi {{firstName}},\n\nI wanted to follow up on my previous email. I understand you\'re busy, but I believe our solution could save {{company}} significant time on outreach.\n\nWould Tuesday or Wednesday work for a brief call?\n\nBest,\n{{senderName}}', category: 'follow_up', aiGenerated: false },
@@ -167,7 +182,7 @@ const seed = async () => {
     }
     console.log('Created 18 email templates');
 
-    // Create 16+ Campaigns
+    // Create 16 Campaigns
     const campaigns = [
       { name: 'Q1 Enterprise Push', description: 'Target enterprise accounts for Q1', status: 'active', type: 'outreach', contacts: 150, sent: 450, opened: 180, clicked: 90, replies: 45, meetings: 22, revenue: 125000 },
       { name: 'SMB Nurture Sequence', description: 'Nurture small business leads', status: 'active', type: 'nurture', contacts: 300, sent: 900, opened: 360, clicked: 180, replies: 90, meetings: 35, revenue: 75000 },
@@ -235,7 +250,7 @@ const seed = async () => {
     }
     console.log('Created 50 sent emails');
 
-    // Create 15+ A/B Tests
+    // Create 16 A/B Tests
     const abTests = [
       { name: 'Subject Line Test - Personalization', status: 'completed', winner: 'A' },
       { name: 'CTA Button Color Test', status: 'running', winner: null },
@@ -301,7 +316,7 @@ const seed = async () => {
     }
     console.log('Created 30 days of analytics');
 
-    // Create 15+ Integrations
+    // Create 16 Integrations
     const integrations = [
       { name: 'Salesforce', type: 'crm', status: 'connected' },
       { name: 'HubSpot', type: 'crm', status: 'connected' },
@@ -398,9 +413,9 @@ const seed = async () => {
     }
     console.log('Created 16 sequences');
 
-    // Create sequence steps for ALL sequences
+    // Create sequence steps
     for (let i = 0; i < sequenceIds.length; i++) {
-      const stepCount = Math.floor(Math.random() * 3) + 3; // 3-5 steps per sequence
+      const stepCount = Math.floor(Math.random() * 3) + 3;
       for (let step = 1; step <= stepCount; step++) {
         await client.query(
           `INSERT INTO sequence_steps (sequence_id, step_number, step_type, template_id, delay_days, delay_hours, sent_count, open_count, reply_count)
@@ -470,7 +485,7 @@ const seed = async () => {
     console.log('Created 18 meetings');
 
     // Create 20 Tasks
-    const tasks = [
+    const tasksList = [
       { title: 'Follow up with TechCorp CTO', type: 'follow_up', priority: 'high', status: 'pending' },
       { title: 'Send pricing proposal to GlobalFin', type: 'proposal', priority: 'high', status: 'in_progress' },
       { title: 'Research Innovate.io competitors', type: 'research', priority: 'medium', status: 'pending' },
@@ -493,8 +508,8 @@ const seed = async () => {
       { title: 'Update CRM records', type: 'data_update', priority: 'low', status: 'pending' },
     ];
 
-    for (let i = 0; i < tasks.length; i++) {
-      const t = tasks[i];
+    for (let i = 0; i < tasksList.length; i++) {
+      const t = tasksList[i];
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + (i - 5));
 
@@ -594,6 +609,260 @@ const seed = async () => {
       );
     }
     console.log('Created 15 reports');
+
+    // ==================== AI LEAD SCORES (16 items) ====================
+    const leadScores = [
+      { score: 95, confidence: 92.5, engagement: 'hot', signals: ['Requested demo', 'Multiple page views', 'Downloaded whitepaper'], risks: ['Budget approval pending'], action: 'Schedule discovery call immediately', closeDate: '2024-02-15', value: 75000 },
+      { score: 88, confidence: 85.0, engagement: 'hot', signals: ['Replied to email', 'Visited pricing page'], risks: ['Competitor evaluation'], action: 'Send case study', closeDate: '2024-02-28', value: 45000 },
+      { score: 82, confidence: 78.5, engagement: 'warm', signals: ['Opened 3 emails', 'LinkedIn connection'], risks: ['Long decision cycle'], action: 'Follow up with value proposition', closeDate: '2024-03-10', value: 55000 },
+      { score: 78, confidence: 80.0, engagement: 'warm', signals: ['Webinar attendance', 'Blog subscriber'], risks: ['Multiple stakeholders'], action: 'Identify decision makers', closeDate: '2024-03-15', value: 35000 },
+      { score: 75, confidence: 72.5, engagement: 'warm', signals: ['Form submission', 'Email click'], risks: ['Budget constraints'], action: 'Share ROI calculator', closeDate: '2024-03-20', value: 28000 },
+      { score: 72, confidence: 70.0, engagement: 'warm', signals: ['Product page visit', 'Chatbot interaction'], risks: ['Timeline unclear'], action: 'Qualify timeline', closeDate: '2024-03-25', value: 40000 },
+      { score: 68, confidence: 65.5, engagement: 'engaged', signals: ['Newsletter open', 'Social media follow'], risks: ['Low engagement recently'], action: 'Re-engage with relevant content', closeDate: '2024-04-01', value: 32000 },
+      { score: 65, confidence: 62.0, engagement: 'engaged', signals: ['Website visit', 'Email open'], risks: ['Competition awareness'], action: 'Send competitive comparison', closeDate: '2024-04-05', value: 25000 },
+      { score: 62, confidence: 58.5, engagement: 'engaged', signals: ['LinkedIn profile view', 'Content download'], risks: ['Decision maker not identified'], action: 'Map org structure', closeDate: '2024-04-10', value: 38000 },
+      { score: 58, confidence: 55.0, engagement: 'cool', signals: ['Single email open'], risks: ['Low engagement', 'Unclear need'], action: 'Nurture with educational content', closeDate: '2024-04-20', value: 22000 },
+      { score: 55, confidence: 52.5, engagement: 'cool', signals: ['Referred by partner'], risks: ['Early stage exploration'], action: 'Provide industry insights', closeDate: '2024-04-25', value: 30000 },
+      { score: 52, confidence: 50.0, engagement: 'cool', signals: ['Trade show scan'], risks: ['No follow-up response'], action: 'Send personalized follow-up', closeDate: '2024-05-01', value: 18000 },
+      { score: 48, confidence: 45.5, engagement: 'cold', signals: ['Cold list import'], risks: ['No engagement history'], action: 'Start nurture sequence', closeDate: '2024-05-15', value: 15000 },
+      { score: 45, confidence: 42.0, engagement: 'cold', signals: ['Outdated contact'], risks: ['Data quality issues'], action: 'Verify contact info', closeDate: '2024-05-20', value: 12000 },
+      { score: 42, confidence: 38.5, engagement: 'cold', signals: ['Bounced email recovered'], risks: ['Historical unsubscribe'], action: 'Careful re-engagement', closeDate: '2024-06-01', value: 20000 },
+      { score: 38, confidence: 35.0, engagement: 'cold', signals: ['Minimal activity'], risks: ['Possible bad fit'], action: 'Qualify fit before pursuing', closeDate: '2024-06-15', value: 10000 },
+    ];
+
+    for (let i = 0; i < leadScores.length; i++) {
+      const ls = leadScores[i];
+      await client.query(
+        `INSERT INTO ai_lead_scores (team_id, contact_id, score, confidence, factors, ai_analysis, recommendation,
+          engagement_level, buying_signals, risk_factors, next_best_action, predicted_close_date, predicted_deal_value)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [mainTeam.id, contactIds[i % contactIds.length], ls.score, ls.confidence,
+         JSON.stringify({ engagement: ls.engagement, signals: ls.signals, risks: ls.risks }),
+         `Lead shows ${ls.engagement} engagement with ${ls.signals.length} positive signals. ${ls.risks.join('. ')} are potential concerns.`,
+         ls.action, ls.engagement, ls.signals, ls.risks, ls.action, ls.closeDate, ls.value]
+      );
+    }
+    console.log('Created 16 AI lead scores');
+
+    // ==================== AI PERSONALIZATIONS (16 items) ====================
+    const personalizations = [
+      { type: 'email', tone: 'professional', industry: 'Technology', original: 'Hi, I wanted to reach out about our product.', personalized: 'Hi Alex, I noticed TechCorp recently expanded their engineering team. Our AI-powered platform could help your growing team scale outreach while maintaining quality. Would you be open to a quick chat?', confidence: 92 },
+      { type: 'email', tone: 'casual', industry: 'Finance', original: 'Let me share how we can help.', personalized: 'Hey Maria, saw GlobalFin is crushing it in the fintech space! We work with similar fast-moving finance teams to automate their sales outreach. Thought it might be worth connecting.', confidence: 88 },
+      { type: 'email', tone: 'consultative', industry: 'SaaS', original: 'Our solution can benefit your company.', personalized: 'Kevin, as a CEO at Innovate.io, you likely face the challenge of scaling sales without losing the personal touch. Our AI helps maintain personalization at scale - something early-stage companies often struggle with.', confidence: 85 },
+      { type: 'linkedin', tone: 'professional', industry: 'Enterprise', original: 'Connection request message.', personalized: 'Rachel, your recent article on digital transformation in enterprise IT was insightful. I work with IT Directors to modernize their sales tech stack. Would love to connect.', confidence: 90 },
+      { type: 'email', tone: 'urgent', industry: 'E-commerce', original: 'Time-sensitive offer for you.', personalized: 'Tom, Q4 is approaching fast. CloudNine could leverage our platform to maximize holiday outreach efficiency. Companies in your space typically see 40% more responses with our AI. Worth 15 minutes?', confidence: 78 },
+      { type: 'follow_up', tone: 'persistent', industry: 'Healthcare', original: 'Following up on my previous email.', personalized: 'Jessica, I know healthcare companies like DataDriven have strict compliance needs. I wanted to follow up and mention our SOC2 certification and HIPAA-compliant features that address exactly these concerns.', confidence: 82 },
+      { type: 'email', tone: 'value_focused', industry: 'Manufacturing', original: 'Save time with automation.', personalized: 'Brandon, manufacturing VP engineers typically spend 8+ hours weekly on outreach. Our AI reduces that to 2 hours while improving response rates. NexGen could reinvest that time in product development.', confidence: 86 },
+      { type: 'email', tone: 'professional', industry: 'AI/ML', original: 'AI-powered solution for your team.', personalized: 'Samantha, as Quantum AI\'s CIO, you understand AI capabilities better than most. Our platform uses similar transformer models you likely appreciate for nuanced personalization that actually works.', confidence: 94 },
+      { type: 'cold_outreach', tone: 'curious', industry: 'Networking', original: 'Quick question about your process.', personalized: 'Marcus, curious how BlueSky Networks handles outreach at scale? We\'ve helped networking companies reduce manual work by 70% while increasing qualified meetings. Would love to learn about your current approach.', confidence: 75 },
+      { type: 'email', tone: 'friendly', industry: 'Startup', original: 'Helping startups grow faster.', personalized: 'Olivia, Swiftly is at that exciting stage where every efficiency gain matters. Our startup-friendly pricing and quick implementation could help your team punch above its weight in sales.', confidence: 80 },
+      { type: 'meeting_request', tone: 'direct', industry: 'Technology', original: 'Can we schedule a call?', personalized: 'Nathan, would 15 minutes next Tuesday work to discuss how Prime Solutions could automate 80% of initial outreach? I\'ll come prepared with specific ideas for your tech stack.', confidence: 88 },
+      { type: 'email', tone: 'empathetic', industry: 'Consulting', original: 'Understanding your challenges.', personalized: 'Victoria, running Digital Hub means wearing many hats. Our AI handles the tedious parts of sales outreach so you can focus on what CEOs do best - building relationships and closing deals.', confidence: 83 },
+      { type: 'email', tone: 'data_driven', industry: 'Analytics', original: 'Results-focused solution.', personalized: 'Derek, AlphaWave engineering leads typically love data. Here\'s what we\'ve measured: 3.2x reply rates, 45% less time on outreach, 28% more meetings. Happy to show you the methodology.', confidence: 91 },
+      { type: 'linkedin', tone: 'professional', industry: 'Operations', original: 'Professional connection.', personalized: 'Christina, ByteCraft\'s focus on operational excellence aligns perfectly with our mission. Our platform helps VP Ops like yourself systematize and scale sales processes efficiently.', confidence: 79 },
+      { type: 'email', tone: 'consultative', industry: 'Enterprise', original: 'Enterprise solution overview.', personalized: 'Andrew, CoreLogic Directors face unique challenges balancing enterprise requirements with modern tools. Our platform offers enterprise-grade security with startup-level ease of use.', confidence: 84 },
+      { type: 'email', tone: 'technical', industry: 'Technology', original: 'Technical product details.', personalized: 'Laura, as Synapse Tech\'s CTO, you\'ll appreciate that our AI uses fine-tuned LLMs with <50ms latency. Our API-first approach means seamless integration with your existing stack.', confidence: 89 },
+    ];
+
+    for (let i = 0; i < personalizations.length; i++) {
+      const p = personalizations[i];
+      await client.query(
+        `INSERT INTO ai_personalizations (team_id, contact_id, personalization_type, original_content, personalized_content,
+          personalization_factors, tone, industry_context, company_insights, role_specific_points, pain_points,
+          value_propositions, ai_confidence, engagement_prediction)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [mainTeam.id, contactIds[i % contactIds.length], p.type, p.original, p.personalized,
+         JSON.stringify({ industry: true, role: true, company: true, timing: false }),
+         p.tone, `${p.industry} sector insights applied`, 'Company research incorporated',
+         ['Role-specific pain points addressed', 'Industry terminology used'],
+         ['Time management', 'Scale challenges', 'Efficiency needs'],
+         ['40% time savings', 'Higher response rates', 'Easy integration'],
+         p.confidence, p.confidence - 5]
+      );
+    }
+    console.log('Created 16 AI personalizations');
+
+    // ==================== AI BEST TIMES (16 items) ====================
+    const bestTimes = [
+      { day: 'Tuesday', start: '09:00', end: '11:00', tz: 'America/New_York', confidence: 92, frequency: 'Every 3-4 days', avoid: ['Monday mornings', 'Friday afternoons'], insight: 'Tech executives check emails early Tuesday' },
+      { day: 'Wednesday', start: '10:00', end: '12:00', tz: 'America/Chicago', confidence: 88, frequency: 'Every 4-5 days', avoid: ['Weekend', 'Late evenings'], insight: 'Finance professionals prefer mid-week contact' },
+      { day: 'Tuesday', start: '14:00', end: '16:00', tz: 'America/Los_Angeles', confidence: 85, frequency: 'Every 3 days', avoid: ['Early mornings', 'After 5pm'], insight: 'West coast responds better in afternoon' },
+      { day: 'Thursday', start: '08:00', end: '10:00', tz: 'America/New_York', confidence: 90, frequency: 'Every 4 days', avoid: ['Lunch hours', 'Meeting blocks'], insight: 'Enterprise buyers start early Thursday' },
+      { day: 'Wednesday', start: '11:00', end: '13:00', tz: 'Europe/London', confidence: 82, frequency: 'Every 5 days', avoid: ['Bank holidays', 'August'], insight: 'UK contacts prefer late morning' },
+      { day: 'Tuesday', start: '15:00', end: '17:00', tz: 'America/Denver', confidence: 86, frequency: 'Every 3-4 days', avoid: ['Monday', 'Friday PM'], insight: 'Mountain time zone afternoon optimal' },
+      { day: 'Thursday', start: '09:30', end: '11:30', tz: 'America/New_York', confidence: 91, frequency: 'Every 4 days', avoid: ['Board meeting days', 'Month-end'], insight: 'CTOs available Thursday mornings' },
+      { day: 'Monday', start: '14:00', end: '16:00', tz: 'America/Chicago', confidence: 78, frequency: 'Every 5 days', avoid: ['Morning catch-up', 'Weekend'], insight: 'Some prefer Monday afternoon fresh start' },
+      { day: 'Wednesday', start: '09:00', end: '11:00', tz: 'Asia/Singapore', confidence: 84, frequency: 'Every 4 days', avoid: ['Lunar holidays', 'After 6pm'], insight: 'APAC morning engagement high' },
+      { day: 'Friday', start: '10:00', end: '12:00', tz: 'America/New_York', confidence: 72, frequency: 'Every 5-6 days', avoid: ['Afternoon', 'Summer Fridays'], insight: 'Friday morning for quick decisions' },
+      { day: 'Tuesday', start: '08:30', end: '10:30', tz: 'America/New_York', confidence: 89, frequency: 'Every 3 days', avoid: ['Standup times', 'Late day'], insight: 'Early birds respond before meetings' },
+      { day: 'Wednesday', start: '13:00', end: '15:00', tz: 'America/Los_Angeles', confidence: 80, frequency: 'Every 4 days', avoid: ['Lunch', 'End of day'], insight: 'Post-lunch focus time works well' },
+      { day: 'Thursday', start: '10:00', end: '12:00', tz: 'Europe/Berlin', confidence: 87, frequency: 'Every 4-5 days', avoid: ['German holidays', 'August'], insight: 'DACH region mid-morning optimal' },
+      { day: 'Tuesday', start: '11:00', end: '13:00', tz: 'America/Chicago', confidence: 83, frequency: 'Every 3-4 days', avoid: ['Early AM', 'End of week'], insight: 'Midwest professionals prefer late morning' },
+      { day: 'Wednesday', start: '14:00', end: '16:00', tz: 'America/New_York', confidence: 81, frequency: 'Every 4 days', avoid: ['Quarterly close', 'Holidays'], insight: 'Mid-week afternoon for follow-ups' },
+      { day: 'Thursday', start: '09:00', end: '11:00', tz: 'Australia/Sydney', confidence: 76, frequency: 'Every 5 days', avoid: ['AEST evening', 'Public holidays'], insight: 'ANZ morning window important' },
+    ];
+
+    for (let i = 0; i < bestTimes.length; i++) {
+      const bt = bestTimes[i];
+      await client.query(
+        `INSERT INTO ai_best_times (team_id, contact_id, best_day, best_time_start, best_time_end, timezone,
+          confidence, historical_data, ai_reasoning, engagement_patterns, optimal_frequency, avoid_times, industry_insights)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [mainTeam.id, contactIds[i % contactIds.length], bt.day, bt.start, bt.end, bt.tz, bt.confidence,
+         JSON.stringify({ opensHistory: [bt.start], repliesHistory: [bt.start] }),
+         bt.insight, JSON.stringify({ morning: 60, afternoon: 40, evening: 10 }),
+         bt.frequency, bt.avoid, bt.insight]
+      );
+    }
+    console.log('Created 16 AI best times');
+
+    // ==================== AI OBJECTIONS (16 items) ====================
+    const objections = [
+      { type: 'price', text: 'Your solution is too expensive for our budget.', strategy: 'Value reframe - focus on ROI', success: 72, industry: 'General', persona: 'Decision Maker' },
+      { type: 'timing', text: 'We\'re not ready to make a change right now.', strategy: 'Create urgency with opportunity cost', success: 65, industry: 'Technology', persona: 'VP' },
+      { type: 'competitor', text: 'We\'re already using a competitor\'s solution.', strategy: 'Highlight unique differentiators', success: 58, industry: 'SaaS', persona: 'IT Director' },
+      { type: 'authority', text: 'I need to check with my team/boss first.', strategy: 'Offer to include stakeholders', success: 70, industry: 'Enterprise', persona: 'Manager' },
+      { type: 'need', text: 'We don\'t really need this right now.', strategy: 'Uncover hidden pain points', success: 55, industry: 'General', persona: 'Decision Maker' },
+      { type: 'trust', text: 'I\'ve never heard of your company before.', strategy: 'Provide social proof and references', success: 68, industry: 'General', persona: 'Executive' },
+      { type: 'complexity', text: 'This seems too complicated to implement.', strategy: 'Simplify and offer support', success: 75, industry: 'Enterprise', persona: 'IT' },
+      { type: 'contract', text: 'We\'re locked into a contract with another vendor.', strategy: 'Discuss transition timing', success: 52, industry: 'Technology', persona: 'Procurement' },
+      { type: 'resources', text: 'We don\'t have the bandwidth to implement this.', strategy: 'Offer implementation support', success: 78, industry: 'SMB', persona: 'Owner' },
+      { type: 'roi', text: 'I\'m not convinced about the ROI.', strategy: 'Share case studies with metrics', success: 73, industry: 'Finance', persona: 'CFO' },
+      { type: 'features', text: 'You\'re missing a feature we need.', strategy: 'Discuss roadmap or workarounds', success: 60, industry: 'Technology', persona: 'Product' },
+      { type: 'status_quo', text: 'Our current process works fine.', strategy: 'Quantify improvement potential', success: 48, industry: 'General', persona: 'Operations' },
+      { type: 'risk', text: 'What if this doesn\'t work for us?', strategy: 'Offer trial or guarantee', success: 82, industry: 'Enterprise', persona: 'Executive' },
+      { type: 'priority', text: 'We have other priorities right now.', strategy: 'Align with their top priorities', success: 55, industry: 'General', persona: 'Director' },
+      { type: 'approval', text: 'I need to get this approved by the board.', strategy: 'Provide executive summary', success: 62, industry: 'Enterprise', persona: 'C-Level' },
+      { type: 'satisfied', text: 'We\'re satisfied with what we have.', strategy: 'Uncover improvement opportunities', success: 45, industry: 'General', persona: 'Manager' },
+    ];
+
+    for (const obj of objections) {
+      await client.query(
+        `INSERT INTO ai_objections (team_id, objection_type, objection_text, response_strategy, response_templates,
+          confidence, success_rate, use_count, industry, buyer_persona, related_objections, follow_up_questions, ai_insights)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [mainTeam.id, obj.type, obj.text, obj.strategy,
+         JSON.stringify([
+           { approach: 'Empathetic', response: `I understand your concern about ${obj.type}. Let me address that...`, tone: 'empathetic', effectiveness: obj.success },
+           { approach: 'Value-based', response: `When you consider the value we provide regarding ${obj.type}...`, tone: 'consultative', effectiveness: obj.success - 5 },
+           { approach: 'Question-based', response: `Help me understand - what would make you feel comfortable about ${obj.type}?`, tone: 'curious', effectiveness: obj.success - 10 }
+         ]),
+         85 + Math.random() * 10, obj.success, Math.floor(Math.random() * 50) + 5, obj.industry, obj.persona,
+         [`Similar to ${obj.type}`, 'Follow-up needed'], ['What would change your mind?', 'Who else should we include?'],
+         `${obj.type} objections typically indicate ${obj.strategy.toLowerCase()}. Success rate: ${obj.success}%.`]
+      );
+    }
+    console.log('Created 16 AI objections');
+
+    // ==================== AI PIPELINE FORECASTS (16 items) ====================
+    const forecasts = [
+      { period: 'Q1 2024', revenue: 450000, deals: 12, confidence: 82, health: 'Healthy', best: 580000, likely: 450000, worst: 320000 },
+      { period: 'Q2 2024', revenue: 520000, deals: 15, confidence: 75, health: 'Growing', best: 680000, likely: 520000, worst: 380000 },
+      { period: 'Q3 2024', revenue: 380000, deals: 10, confidence: 68, health: 'At Risk', best: 480000, likely: 380000, worst: 250000 },
+      { period: 'Q4 2024', revenue: 620000, deals: 18, confidence: 72, health: 'Strong', best: 800000, likely: 620000, worst: 450000 },
+      { period: 'January 2024', revenue: 145000, deals: 4, confidence: 88, health: 'Healthy', best: 180000, likely: 145000, worst: 110000 },
+      { period: 'February 2024', revenue: 165000, deals: 5, confidence: 85, health: 'Growing', best: 210000, likely: 165000, worst: 125000 },
+      { period: 'March 2024', revenue: 140000, deals: 4, confidence: 78, health: 'Stable', best: 175000, likely: 140000, worst: 100000 },
+      { period: 'H1 2024', revenue: 880000, deals: 25, confidence: 76, health: 'Healthy', best: 1100000, likely: 880000, worst: 650000 },
+      { period: 'H2 2024', revenue: 1020000, deals: 30, confidence: 65, health: 'Optimistic', best: 1350000, likely: 1020000, worst: 720000 },
+      { period: 'FY 2024', revenue: 1900000, deals: 55, confidence: 60, health: 'On Track', best: 2400000, likely: 1900000, worst: 1400000 },
+      { period: 'Next 30 Days', revenue: 95000, deals: 3, confidence: 92, health: 'Strong', best: 120000, likely: 95000, worst: 75000 },
+      { period: 'Next 60 Days', revenue: 185000, deals: 6, confidence: 85, health: 'Healthy', best: 230000, likely: 185000, worst: 140000 },
+      { period: 'Next 90 Days', revenue: 280000, deals: 8, confidence: 78, health: 'Growing', best: 360000, likely: 280000, worst: 200000 },
+      { period: 'April 2024', revenue: 125000, deals: 4, confidence: 70, health: 'Building', best: 160000, likely: 125000, worst: 90000 },
+      { period: 'May 2024', revenue: 135000, deals: 4, confidence: 68, health: 'Stable', best: 170000, likely: 135000, worst: 95000 },
+      { period: 'June 2024', revenue: 155000, deals: 5, confidence: 65, health: 'Growing', best: 200000, likely: 155000, worst: 110000 },
+    ];
+
+    for (const f of forecasts) {
+      const forecastDate = new Date();
+      forecastDate.setDate(forecastDate.getDate() - Math.floor(Math.random() * 30));
+
+      await client.query(
+        `INSERT INTO ai_pipeline_forecasts (team_id, forecast_period, forecast_date, predicted_revenue, predicted_deals,
+          confidence, pipeline_health, risk_assessment, opportunities, recommendations, ai_analysis, factors_considered,
+          scenario_best, scenario_likely, scenario_worst)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [mainTeam.id, f.period, forecastDate, f.revenue, f.deals, f.confidence, f.health,
+         `Pipeline shows ${f.health.toLowerCase()} indicators with ${f.confidence}% confidence`,
+         JSON.stringify([
+           { name: 'Top Deal A', value: f.revenue * 0.3, probability: 75, expectedClose: '2024-02-15' },
+           { name: 'Top Deal B', value: f.revenue * 0.25, probability: 60, expectedClose: '2024-03-01' },
+           { name: 'Top Deal C', value: f.revenue * 0.2, probability: 50, expectedClose: '2024-03-15' }
+         ]),
+         ['Focus on advancing high-value deals', 'Add more early-stage pipeline', 'Prioritize deals near close'],
+         `Based on historical win rates and current pipeline velocity, we forecast $${f.revenue.toLocaleString()} in ${f.period}.`,
+         JSON.stringify({ dealStages: true, historicalWinRates: true, seasonalPatterns: true, marketConditions: true }),
+         f.best, f.likely, f.worst]
+      );
+    }
+    console.log('Created 16 AI pipeline forecasts');
+
+    // ==================== SEED DATA FOR NEW FEATURES ====================
+
+    // Password Reset Tokens (15 demo entries)
+    const resetTokenStatuses = [
+      { used: true, hoursAgo: 48 },
+      { used: true, hoursAgo: 72 },
+      { used: false, hoursAgo: 0 },
+      { used: true, hoursAgo: 24 },
+      { used: true, hoursAgo: 96 },
+      { used: false, hoursAgo: 2 },
+      { used: true, hoursAgo: 120 },
+      { used: true, hoursAgo: 36 },
+      { used: false, hoursAgo: 1 },
+      { used: true, hoursAgo: 168 },
+      { used: true, hoursAgo: 200 },
+      { used: true, hoursAgo: 60 },
+      { used: false, hoursAgo: 0.5 },
+      { used: true, hoursAgo: 144 },
+      { used: true, hoursAgo: 240 },
+    ];
+
+    for (let i = 0; i < resetTokenStatuses.length; i++) {
+      const r = resetTokenStatuses[i];
+      const createdAt = new Date();
+      createdAt.setHours(createdAt.getHours() - r.hoursAgo);
+      const expiresAt = new Date(createdAt);
+      expiresAt.setHours(expiresAt.getHours() + 1);
+
+      await client.query(
+        `INSERT INTO password_reset_tokens (user_id, token, used, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [users[i % users.length].id, uuidv4(), r.used, expiresAt, createdAt]
+      );
+    }
+    console.log('Created 15 password reset tokens');
+
+    // Email Verifications (15 demo entries)
+    for (let i = 0; i < 15; i++) {
+      const createdAt = new Date();
+      createdAt.setDate(createdAt.getDate() - i);
+      const expiresAt = new Date(createdAt);
+      expiresAt.setHours(expiresAt.getHours() + 24);
+
+      await client.query(
+        `INSERT INTO email_verifications (user_id, token, verified, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [users[i % users.length].id, uuidv4(), i < 12, expiresAt, createdAt]
+      );
+    }
+    console.log('Created 15 email verifications');
+
+    // Token Blacklist (15 demo entries - expired tokens for cleanup demo)
+    for (let i = 0; i < 15; i++) {
+      const createdAt = new Date();
+      createdAt.setHours(createdAt.getHours() - (i + 1) * 24);
+      const expiresAt = new Date(createdAt);
+      expiresAt.setHours(expiresAt.getHours() + 24);
+
+      await client.query(
+        `INSERT INTO token_blacklist (token, user_id, expires_at, created_at)
+         VALUES ($1, $2, $3, $4)`,
+        [`expired-token-${uuidv4().slice(0, 8)}`, users[i % users.length].id, expiresAt, createdAt]
+      );
+    }
+    console.log('Created 15 token blacklist entries');
 
     console.log('\nSeed completed successfully!');
     console.log('Login credentials: any seeded email with password "password123"');

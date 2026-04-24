@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { reportsAPI } from '../services/api';
-import { ArrowLeft, Download, Calendar, User, FileBarChart } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonCard } from '../components/Skeleton';
+import { ArrowLeft, Download, Trash2, Calendar, User, FileBarChart } from 'lucide-react';
 
 interface Report {
   id: string;
@@ -20,8 +23,10 @@ interface Report {
 const ReportDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -34,9 +39,39 @@ const ReportDetail: React.FC = () => {
       const response = await reportsAPI.getById(id!);
       setReport(response.data);
     } catch (error) {
-      console.error('Error fetching report:', error);
+      showToast('Failed to load report', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await reportsAPI.delete(id!);
+      showToast('Report deleted successfully', 'success');
+      navigate('/reports');
+    } catch (error) {
+      showToast('Failed to delete report', 'error');
+    } finally {
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!report) return;
+    try {
+      const blob = new Blob([JSON.stringify(report.data, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${report.name.replace(/\s+/g, '_')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      showToast('Report downloaded', 'success');
+    } catch (error) {
+      showToast('Failed to download report', 'error');
     }
   };
 
@@ -46,7 +81,17 @@ const ReportDetail: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading report...</div>;
+    return (
+      <div>
+        <button className="btn btn-secondary" onClick={() => navigate('/reports')} style={{ marginBottom: '20px' }}>
+          <ArrowLeft size={18} /> Back to Reports
+        </button>
+        <SkeletonCard />
+        <div style={{ marginTop: '24px' }}>
+          <SkeletonCard />
+        </div>
+      </div>
+    );
   }
 
   if (!report) {
@@ -64,9 +109,14 @@ const ReportDetail: React.FC = () => {
           <h1 className="page-title">{report.name}</h1>
           <p className="page-subtitle" style={{ textTransform: 'capitalize' }}>{report.reportType.replace(/_/g, ' ')}</p>
         </div>
-        <button className="btn btn-primary">
-          <Download size={18} /> Export PDF
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-primary" onClick={handleDownload}>
+            <Download size={18} /> Export PDF
+          </button>
+          <button className="btn btn-danger" onClick={() => setShowDeleteConfirm(true)}>
+            <Trash2 size={18} /> Delete
+          </button>
+        </div>
       </div>
 
       <div className="detail-grid">
@@ -135,6 +185,17 @@ const ReportDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Report"
+        message={`Are you sure you want to delete "${report.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 };

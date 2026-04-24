@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { tasksAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
-import { ArrowLeft, CheckCircle, Clock, User, Building, Flag, Calendar, Save } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonCard } from '../components/Skeleton';
+import {
+  ArrowLeft, CheckCircle, Clock, User, Building, Flag, Calendar,
+  Save, Edit, Trash2, X
+} from 'lucide-react';
 
 interface Task {
   id: string;
@@ -24,14 +30,18 @@ const TaskDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, team } = useAuth();
+  const { showToast } = useToast();
   const isNew = id === 'new';
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(!isNew);
+  const [editing, setEditing] = useState(isNew);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     taskType: 'follow_up',
     priority: 'medium',
+    status: 'pending',
     dueDate: '',
   });
   const [saving, setSaving] = useState(false);
@@ -46,8 +56,16 @@ const TaskDetail: React.FC = () => {
     try {
       const response = await tasksAPI.getById(id!);
       setTask(response.data);
+      setFormData({
+        title: response.data.title || '',
+        description: response.data.description || '',
+        taskType: response.data.taskType || 'follow_up',
+        priority: response.data.priority || 'medium',
+        status: response.data.status || 'pending',
+        dueDate: response.data.dueDate ? new Date(response.data.dueDate).toISOString().slice(0, 16) : '',
+      });
     } catch (error) {
-      console.error('Error fetching task:', error);
+      showToast('Failed to load task', 'error');
     } finally {
       setLoading(false);
     }
@@ -58,31 +76,49 @@ const TaskDetail: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!team?.id) return;
 
     setSaving(true);
     try {
-      const response = await tasksAPI.create({
-        teamId: team.id,
-        userId: user?.id,
-        ...formData,
-      });
-      navigate(`/tasks/${response.data.id}`);
+      if (isNew) {
+        const response = await tasksAPI.create({
+          teamId: team.id,
+          userId: user?.id,
+          ...formData,
+        });
+        showToast('Task created successfully', 'success');
+        navigate(`/tasks/${response.data.id}`);
+      } else {
+        await tasksAPI.update(id!, formData);
+        const response = await tasksAPI.getById(id!);
+        setTask(response.data);
+        setEditing(false);
+        showToast('Task updated successfully', 'success');
+      }
     } catch (error) {
-      console.error('Error creating task:', error);
+      showToast('Failed to save task', 'error');
     } finally {
       setSaving(false);
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await tasksAPI.delete(id!);
+      showToast('Task deleted successfully', 'success');
+      navigate('/tasks');
+    } catch { showToast('Failed to delete task', 'error'); }
+  };
+
   const handleComplete = async () => {
     try {
       await tasksAPI.complete(task!.id);
+      showToast('Task marked as completed', 'success');
       fetchTask();
     } catch (error) {
-      console.error('Error completing task:', error);
+      showToast('Failed to complete task', 'error');
     }
   };
 
@@ -101,19 +137,25 @@ const TaskDetail: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading task...</div>;
+    return (
+      <div style={{ padding: '24px' }}>
+        <SkeletonCard />
+        <div style={{ marginTop: '24px' }}><SkeletonCard /></div>
+      </div>
+    );
   }
 
-  if (isNew) {
+  if (isNew || editing) {
     return (
       <div>
-        <button className="btn btn-secondary" onClick={() => navigate('/tasks')} style={{ marginBottom: '20px' }}>
-          <ArrowLeft size={18} /> Back to Tasks
+        <button className="btn btn-secondary" onClick={() => editing && !isNew ? setEditing(false) : navigate('/tasks')}
+          style={{ marginBottom: '24px' }}>
+          <ArrowLeft size={18} /> {isNew ? 'Back to Tasks' : 'Cancel Editing'}
         </button>
 
         <div className="card">
-          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>Create New Task</h2>
-          <form onSubmit={handleCreate}>
+          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>{isNew ? 'Create New Task' : 'Edit Task'}</h2>
+          <form onSubmit={handleSave}>
             <div className="form-group">
               <label className="form-label">Task Title *</label>
               <input
@@ -142,12 +184,7 @@ const TaskDetail: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="form-group">
                 <label className="form-label">Task Type</label>
-                <select
-                  name="taskType"
-                  className="form-input"
-                  value={formData.taskType}
-                  onChange={handleInputChange}
-                >
+                <select name="taskType" className="form-input" value={formData.taskType} onChange={handleInputChange}>
                   <option value="follow_up">Follow Up</option>
                   <option value="call">Call</option>
                   <option value="email">Email</option>
@@ -157,12 +194,7 @@ const TaskDetail: React.FC = () => {
               </div>
               <div className="form-group">
                 <label className="form-label">Priority</label>
-                <select
-                  name="priority"
-                  className="form-input"
-                  value={formData.priority}
-                  onChange={handleInputChange}
-                >
+                <select name="priority" className="form-input" value={formData.priority} onChange={handleInputChange}>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -170,23 +202,34 @@ const TaskDetail: React.FC = () => {
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Due Date</label>
-              <input
-                type="datetime-local"
-                name="dueDate"
-                className="form-input"
-                value={formData.dueDate}
-                onChange={handleInputChange}
-              />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="form-group">
+                <label className="form-label">Status</label>
+                <select name="status" className="form-input" value={formData.status} onChange={handleInputChange}>
+                  <option value="pending">Pending</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Due Date</label>
+                <input
+                  type="datetime-local"
+                  name="dueDate"
+                  className="form-input"
+                  value={formData.dueDate}
+                  onChange={handleInputChange}
+                />
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button type="submit" className="btn btn-primary" disabled={saving || !formData.title}>
                 <Save size={18} />
-                {saving ? 'Creating...' : 'Create Task'}
+                {saving ? 'Saving...' : isNew ? 'Create Task' : 'Save Changes'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => navigate('/tasks')}>
+              <button type="button" className="btn btn-secondary"
+                onClick={() => isNew ? navigate('/tasks') : setEditing(false)}>
                 Cancel
               </button>
             </div>
@@ -197,7 +240,7 @@ const TaskDetail: React.FC = () => {
   }
 
   if (!task) {
-    return <div>Task not found</div>;
+    return <div className="empty-state">Task not found</div>;
   }
 
   return (
@@ -211,11 +254,19 @@ const TaskDetail: React.FC = () => {
           <h1 className="page-title">{task.title}</h1>
           <p className="page-subtitle" style={{ textTransform: 'capitalize' }}>{task.taskType.replace('_', ' ')}</p>
         </div>
-        {task.status !== 'completed' && (
-          <button className="btn btn-primary" onClick={handleComplete}>
-            <CheckCircle size={18} /> Mark Complete
+        <div style={{ display: 'flex', gap: '12px' }}>
+          {task.status !== 'completed' && (
+            <button className="btn btn-primary" onClick={handleComplete}>
+              <CheckCircle size={18} /> Mark Complete
+            </button>
+          )}
+          <button className="btn btn-secondary" onClick={() => setEditing(true)}>
+            <Edit size={18} /> Edit
           </button>
-        )}
+          <button className="btn btn-danger" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 size={18} /> Delete
+          </button>
+        </div>
       </div>
 
       <div className="detail-grid">
@@ -324,6 +375,11 @@ const TaskDetail: React.FC = () => {
           )}
         </div>
       </div>
+
+      <ConfirmDialog isOpen={showDeleteDialog} title="Delete Task"
+        message={`Are you sure you want to delete "${task.title}"? This action cannot be undone.`}
+        confirmLabel="Delete" cancelLabel="Cancel" variant="danger"
+        onConfirm={handleDelete} onCancel={() => setShowDeleteDialog(false)} />
     </div>
   );
 };

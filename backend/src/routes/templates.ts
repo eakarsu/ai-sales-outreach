@@ -3,53 +3,91 @@ import { pool } from '../config/database';
 
 const router = Router();
 
+// Allowed sort columns for templates
+const TEMPLATE_SORT_COLUMNS: Record<string, string> = {
+  name: 't.name',
+  subject: 't.subject',
+  category: 't.category',
+  openRate: 't.open_rate',
+  replyRate: 't.reply_rate',
+  usageCount: 't.usage_count',
+  createdAt: 't.created_at',
+};
+
 router.get('/', async (req, res) => {
   try {
-    const { teamId, category, aiGenerated } = req.query;
+    const { teamId, category, aiGenerated, page = 1, limit = 20, sortBy = 'usageCount', sortOrder = 'desc' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const sortColumn = TEMPLATE_SORT_COLUMNS[sortBy as string] || 't.usage_count';
+    const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
 
     let query = `SELECT t.*, u.first_name as creator_first_name, u.last_name as creator_last_name
                  FROM email_templates t
                  LEFT JOIN users u ON t.created_by = u.id
                  WHERE 1=1`;
+    let countQuery = `SELECT COUNT(*) FROM email_templates t WHERE 1=1`;
     const params: any[] = [];
+    const countParams: any[] = [];
     let paramIndex = 1;
+    let countParamIndex = 1;
 
     if (teamId) {
       query += ` AND t.team_id = $${paramIndex++}`;
+      countQuery += ` AND t.team_id = $${countParamIndex++}`;
       params.push(teamId);
+      countParams.push(teamId);
     }
 
     if (category) {
       query += ` AND t.category = $${paramIndex++}`;
+      countQuery += ` AND t.category = $${countParamIndex++}`;
       params.push(category);
+      countParams.push(category);
     }
 
     if (aiGenerated !== undefined) {
       query += ` AND t.is_ai_generated = $${paramIndex++}`;
+      countQuery += ` AND t.is_ai_generated = $${countParamIndex++}`;
       params.push(aiGenerated === 'true');
+      countParams.push(aiGenerated === 'true');
     }
 
-    query += ` ORDER BY t.usage_count DESC, t.created_at DESC`;
+    query += ` ORDER BY ${sortColumn} ${order} LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limitNum, offset);
 
-    const result = await pool.query(query, params);
+    const [result, countResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams)
+    ]);
 
-    res.json(result.rows.map(t => ({
-      id: t.id,
-      teamId: t.team_id,
-      name: t.name,
-      subject: t.subject,
-      body: t.body,
-      category: t.category,
-      isAiGenerated: t.is_ai_generated,
-      variables: t.variables,
-      openRate: parseFloat(t.open_rate),
-      replyRate: parseFloat(t.reply_rate),
-      usageCount: t.usage_count,
-      createdBy: t.created_by,
-      creatorName: t.creator_first_name ? `${t.creator_first_name} ${t.creator_last_name}` : null,
-      createdAt: t.created_at,
-      updatedAt: t.updated_at
-    })));
+    const total = parseInt(countResult.rows[0].count);
+
+    res.json({
+      templates: result.rows.map(t => ({
+        id: t.id,
+        teamId: t.team_id,
+        name: t.name,
+        subject: t.subject,
+        body: t.body,
+        category: t.category,
+        isAiGenerated: t.is_ai_generated,
+        variables: t.variables,
+        openRate: parseFloat(t.open_rate),
+        replyRate: parseFloat(t.reply_rate),
+        usageCount: t.usage_count,
+        createdBy: t.created_by,
+        creatorName: t.creator_first_name ? `${t.creator_first_name} ${t.creator_last_name}` : null,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at
+      })),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
   } catch (error) {
     console.error('Error fetching templates:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -159,6 +197,55 @@ router.post('/:id/use', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating template usage:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Bulk delete
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'At least one ID is required' });
+    }
+    const result = await pool.query(
+      `DELETE FROM email_templates WHERE id = ANY($1::uuid[]) RETURNING id`,
+      [ids]
+    );
+    res.json({ deleted: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk deleting templates:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// CSV export
+router.get('/export/csv', async (req, res) => {
+  try {
+    const { teamId } = req.query;
+    let query = 'SELECT * FROM email_templates';
+    const params: any[] = [];
+    if (teamId) {
+      query += ' WHERE team_id = $1';
+      params.push(teamId);
+    }
+    query += ' ORDER BY created_at DESC';
+
+    const result = await pool.query(query, params);
+
+    const headers = ['Name', 'Subject', 'Body', 'Category', 'AI Generated', 'Open Rate', 'Reply Rate', 'Usage Count', 'Created At'];
+    const rows = result.rows.map(t => [
+      t.name, t.subject, t.body, t.category, t.is_ai_generated,
+      t.open_rate, t.reply_rate, t.usage_count, t.created_at
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${(v || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=templates.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting templates:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

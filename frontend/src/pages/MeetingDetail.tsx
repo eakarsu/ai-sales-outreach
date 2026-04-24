@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { meetingsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
-import { ArrowLeft, Calendar, Clock, Video, User, Building, Mail, DollarSign, CheckCircle, XCircle, Save } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonCard } from '../components/Skeleton';
+import {
+  ArrowLeft, Calendar, Clock, Video, User, Building, Mail, DollarSign,
+  CheckCircle, XCircle, Save, Edit, Trash2, X
+} from 'lucide-react';
 
 interface Meeting {
   id: string;
@@ -26,9 +32,12 @@ const MeetingDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, team } = useAuth();
+  const { showToast } = useToast();
   const isNew = id === 'new';
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [loading, setLoading] = useState(!isNew);
+  const [editing, setEditing] = useState(isNew);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -38,6 +47,7 @@ const MeetingDetail: React.FC = () => {
     location: '',
     meetingLink: '',
     revenuePotential: 0,
+    notes: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -51,8 +61,19 @@ const MeetingDetail: React.FC = () => {
     try {
       const response = await meetingsAPI.getById(id!);
       setMeeting(response.data);
+      setFormData({
+        title: response.data.title || '',
+        description: response.data.description || '',
+        meetingType: response.data.meetingType || 'discovery',
+        scheduledAt: response.data.scheduledAt ? new Date(response.data.scheduledAt).toISOString().slice(0, 16) : '',
+        durationMinutes: response.data.durationMinutes || 30,
+        location: response.data.location || '',
+        meetingLink: response.data.meetingLink || '',
+        revenuePotential: response.data.revenuePotential || 0,
+        notes: response.data.notes || '',
+      });
     } catch (error) {
-      console.error('Error fetching meeting:', error);
+      showToast('Failed to load meeting', 'error');
     } finally {
       setLoading(false);
     }
@@ -66,40 +87,59 @@ const MeetingDetail: React.FC = () => {
     }));
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!team?.id) return;
 
     setSaving(true);
     try {
-      const response = await meetingsAPI.create({
-        teamId: team.id,
-        userId: user?.id,
-        ...formData,
-      });
-      navigate(`/meetings/${response.data.id}`);
+      if (isNew) {
+        const response = await meetingsAPI.create({
+          teamId: team.id,
+          userId: user?.id,
+          ...formData,
+        });
+        showToast('Meeting created successfully', 'success');
+        navigate(`/meetings/${response.data.id}`);
+      } else {
+        await meetingsAPI.update(id!, formData);
+        const response = await meetingsAPI.getById(id!);
+        setMeeting(response.data);
+        setEditing(false);
+        showToast('Meeting updated successfully', 'success');
+      }
     } catch (error) {
-      console.error('Error creating meeting:', error);
+      showToast('Failed to save meeting', 'error');
     } finally {
       setSaving(false);
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await meetingsAPI.delete(id!);
+      showToast('Meeting deleted successfully', 'success');
+      navigate('/meetings');
+    } catch { showToast('Failed to delete meeting', 'error'); }
+  };
+
   const handleComplete = async (outcome: string) => {
     try {
       await meetingsAPI.complete(meeting!.id, { outcome, notes: '' });
+      showToast('Meeting marked as completed', 'success');
       fetchMeeting();
     } catch (error) {
-      console.error('Error completing meeting:', error);
+      showToast('Failed to complete meeting', 'error');
     }
   };
 
   const handleCancel = async () => {
     try {
       await meetingsAPI.cancel(meeting!.id);
+      showToast('Meeting cancelled', 'success');
       fetchMeeting();
     } catch (error) {
-      console.error('Error cancelling meeting:', error);
+      showToast('Failed to cancel meeting', 'error');
     }
   };
 
@@ -114,19 +154,25 @@ const MeetingDetail: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading meeting...</div>;
+    return (
+      <div style={{ padding: '24px' }}>
+        <SkeletonCard />
+        <div style={{ marginTop: '24px' }}><SkeletonCard /></div>
+      </div>
+    );
   }
 
-  if (isNew) {
+  if (isNew || editing) {
     return (
       <div>
-        <button className="btn btn-secondary" onClick={() => navigate('/meetings')} style={{ marginBottom: '20px' }}>
-          <ArrowLeft size={18} /> Back to Meetings
+        <button className="btn btn-secondary" onClick={() => editing && !isNew ? setEditing(false) : navigate('/meetings')}
+          style={{ marginBottom: '24px' }}>
+          <ArrowLeft size={18} /> {isNew ? 'Back to Meetings' : 'Cancel Editing'}
         </button>
 
         <div className="card">
-          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>Schedule New Meeting</h2>
-          <form onSubmit={handleCreate}>
+          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>{isNew ? 'Schedule New Meeting' : 'Edit Meeting'}</h2>
+          <form onSubmit={handleSave}>
             <div className="form-group">
               <label className="form-label">Meeting Title *</label>
               <input
@@ -155,12 +201,7 @@ const MeetingDetail: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="form-group">
                 <label className="form-label">Meeting Type</label>
-                <select
-                  name="meetingType"
-                  className="form-input"
-                  value={formData.meetingType}
-                  onChange={handleInputChange}
-                >
+                <select name="meetingType" className="form-input" value={formData.meetingType} onChange={handleInputChange}>
                   <option value="discovery">Discovery</option>
                   <option value="demo">Demo</option>
                   <option value="follow_up">Follow Up</option>
@@ -170,12 +211,7 @@ const MeetingDetail: React.FC = () => {
               </div>
               <div className="form-group">
                 <label className="form-label">Duration (minutes)</label>
-                <select
-                  name="durationMinutes"
-                  className="form-input"
-                  value={formData.durationMinutes}
-                  onChange={handleInputChange}
-                >
+                <select name="durationMinutes" className="form-input" value={formData.durationMinutes} onChange={handleInputChange}>
                   <option value={15}>15 minutes</option>
                   <option value={30}>30 minutes</option>
                   <option value={45}>45 minutes</option>
@@ -200,47 +236,35 @@ const MeetingDetail: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="form-group">
                 <label className="form-label">Location</label>
-                <input
-                  type="text"
-                  name="location"
-                  className="form-input"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                  placeholder="Office address or 'Virtual'"
-                />
+                <input type="text" name="location" className="form-input" value={formData.location}
+                  onChange={handleInputChange} placeholder="Office address or 'Virtual'" />
               </div>
               <div className="form-group">
                 <label className="form-label">Meeting Link</label>
-                <input
-                  type="url"
-                  name="meetingLink"
-                  className="form-input"
-                  value={formData.meetingLink}
-                  onChange={handleInputChange}
-                  placeholder="https://zoom.us/j/..."
-                />
+                <input type="url" name="meetingLink" className="form-input" value={formData.meetingLink}
+                  onChange={handleInputChange} placeholder="https://zoom.us/j/..." />
               </div>
             </div>
 
             <div className="form-group">
               <label className="form-label">Revenue Potential ($)</label>
-              <input
-                type="number"
-                name="revenuePotential"
-                className="form-input"
-                value={formData.revenuePotential}
-                onChange={handleInputChange}
-                placeholder="0"
-                min="0"
-              />
+              <input type="number" name="revenuePotential" className="form-input" value={formData.revenuePotential}
+                onChange={handleInputChange} placeholder="0" min="0" />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Notes</label>
+              <textarea name="notes" className="form-input" value={formData.notes}
+                onChange={handleInputChange} placeholder="Additional notes..." rows={3} />
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button type="submit" className="btn btn-primary" disabled={saving || !formData.title || !formData.scheduledAt}>
                 <Save size={18} />
-                {saving ? 'Scheduling...' : 'Schedule Meeting'}
+                {saving ? 'Saving...' : isNew ? 'Schedule Meeting' : 'Save Changes'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => navigate('/meetings')}>
+              <button type="button" className="btn btn-secondary"
+                onClick={() => isNew ? navigate('/meetings') : setEditing(false)}>
                 Cancel
               </button>
             </div>
@@ -251,7 +275,7 @@ const MeetingDetail: React.FC = () => {
   }
 
   if (!meeting) {
-    return <div>Meeting not found</div>;
+    return <div className="empty-state">Meeting not found</div>;
   }
 
   return (
@@ -265,16 +289,24 @@ const MeetingDetail: React.FC = () => {
           <h1 className="page-title">{meeting.title}</h1>
           <p className="page-subtitle" style={{ textTransform: 'capitalize' }}>{meeting.meetingType.replace('_', ' ')} Meeting</p>
         </div>
-        {meeting.status === 'scheduled' && (
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button className="btn btn-secondary" onClick={handleCancel}>
-              <XCircle size={18} /> Cancel
-            </button>
-            <button className="btn btn-primary" onClick={() => handleComplete('positive')}>
-              <CheckCircle size={18} /> Mark Complete
-            </button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '12px' }}>
+          {meeting.status === 'scheduled' && (
+            <>
+              <button className="btn btn-secondary" onClick={handleCancel}>
+                <XCircle size={18} /> Cancel
+              </button>
+              <button className="btn btn-primary" onClick={() => handleComplete('positive')}>
+                <CheckCircle size={18} /> Mark Complete
+              </button>
+            </>
+          )}
+          <button className="btn btn-secondary" onClick={() => setEditing(true)}>
+            <Edit size={18} /> Edit
+          </button>
+          <button className="btn btn-danger" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 size={18} /> Delete
+          </button>
+        </div>
       </div>
 
       <div className="detail-grid">
@@ -405,6 +437,11 @@ const MeetingDetail: React.FC = () => {
           )}
         </div>
       </div>
+
+      <ConfirmDialog isOpen={showDeleteDialog} title="Delete Meeting"
+        message={`Are you sure you want to delete "${meeting.title}"? This action cannot be undone.`}
+        confirmLabel="Delete" cancelLabel="Cancel" variant="danger"
+        onConfirm={handleDelete} onCancel={() => setShowDeleteDialog(false)} />
     </div>
   );
 };

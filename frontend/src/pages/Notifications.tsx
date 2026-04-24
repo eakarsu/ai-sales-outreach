@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { notificationsAPI } from '../services/api';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonTable } from '../components/Skeleton';
 import { Bell, Check, CheckCheck, Trash2, Mail, Calendar, Users, TrendingUp, AlertCircle, Info } from 'lucide-react';
 
 interface Notification {
@@ -17,9 +20,11 @@ interface Notification {
 const Notifications: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -32,7 +37,7 @@ const Notifications: React.FC = () => {
       const response = await notificationsAPI.getAll({ userId: user?.id });
       setNotifications(response.data);
     } catch (error) {
-      console.error('Error fetching notifications:', error);
+      showToast('Failed to load notifications', 'error');
     } finally {
       setLoading(false);
     }
@@ -45,8 +50,9 @@ const Notifications: React.FC = () => {
       setNotifications(notifications.map(n =>
         n.id === id ? { ...n, isRead: true } : n
       ));
+      showToast('Marked as read', 'success');
     } catch (error) {
-      console.error('Error marking as read:', error);
+      showToast('Failed to mark as read', 'error');
     }
   };
 
@@ -54,8 +60,9 @@ const Notifications: React.FC = () => {
     try {
       await notificationsAPI.markAllAsRead(user?.id || '');
       setNotifications(notifications.map(n => ({ ...n, isRead: true })));
+      showToast('All notifications marked as read', 'success');
     } catch (error) {
-      console.error('Error marking all as read:', error);
+      showToast('Failed to mark all as read', 'error');
     }
   };
 
@@ -64,8 +71,9 @@ const Notifications: React.FC = () => {
     try {
       await notificationsAPI.delete(id);
       setNotifications(notifications.filter(n => n.id !== id));
+      showToast('Notification deleted', 'success');
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      showToast('Failed to delete notification', 'error');
     }
   };
 
@@ -73,8 +81,11 @@ const Notifications: React.FC = () => {
     try {
       await notificationsAPI.clearRead(user?.id || '');
       setNotifications(notifications.filter(n => !n.isRead));
+      showToast('Read notifications cleared', 'success');
     } catch (error) {
-      console.error('Error clearing read notifications:', error);
+      showToast('Failed to clear read notifications', 'error');
+    } finally {
+      setShowClearConfirm(false);
     }
   };
 
@@ -187,7 +198,17 @@ const Notifications: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading">Loading notifications...</div>;
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Notifications</h1>
+            <p className="page-subtitle">Stay updated on your sales activities</p>
+          </div>
+        </div>
+        <SkeletonTable />
+      </div>
+    );
   }
 
   return (
@@ -200,7 +221,7 @@ const Notifications: React.FC = () => {
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
             className="btn btn-secondary"
-            onClick={handleClearRead}
+            onClick={() => setShowClearConfirm(true)}
             disabled={!notifications.some(n => n.isRead)}
           >
             <Trash2 size={18} />
@@ -352,6 +373,17 @@ const Notifications: React.FC = () => {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={showClearConfirm}
+        title="Clear Read Notifications"
+        message="Are you sure you want to clear all read notifications? This action cannot be undone."
+        confirmLabel="Clear All"
+        cancelLabel="Cancel"
+        variant="warning"
+        onConfirm={handleClearRead}
+        onCancel={() => setShowClearConfirm(false)}
+      />
     </div>
   );
 };

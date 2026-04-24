@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { campaignsAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonCard } from '../components/Skeleton';
+import { FormField, validateRequired } from '../components/FormValidation';
 import {
   ArrowLeft,
   Play,
@@ -15,7 +19,8 @@ import {
   Clock,
   Edit,
   Trash2,
-  Save
+  Save,
+  X
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -23,16 +28,20 @@ const CampaignDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, team } = useAuth();
+  const { showToast } = useToast();
   const isNew = id === 'new';
   const [campaign, setCampaign] = useState<any>(null);
   const [loading, setLoading] = useState(!isNew);
+  const [editing, setEditing] = useState(isNew);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     type: 'outreach',
     targetAudience: '',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -41,8 +50,14 @@ const CampaignDetail: React.FC = () => {
       try {
         const response = await campaignsAPI.getById(id);
         setCampaign(response.data);
+        setFormData({
+          name: response.data.name || '',
+          description: response.data.description || '',
+          type: response.data.type || 'outreach',
+          targetAudience: response.data.targetAudience || '',
+        });
       } catch (error) {
-        console.error('Error fetching campaign:', error);
+        showToast('Failed to load campaign', 'error');
       } finally {
         setLoading(false);
       }
@@ -51,28 +66,55 @@ const CampaignDetail: React.FC = () => {
     fetchCampaign();
   }, [id, isNew]);
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    const nameErr = validateRequired(formData.name, 'Campaign name');
+    if (nameErr) newErrors.name = nameErr;
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
     if (!team?.id) return;
 
     setSaving(true);
     try {
-      const response = await campaignsAPI.create({
-        teamId: team.id,
-        createdBy: user?.id,
-        ...formData,
-      });
-      navigate(`/campaigns/${response.data.id}`);
+      if (isNew) {
+        const response = await campaignsAPI.create({
+          teamId: team.id,
+          createdBy: user?.id,
+          ...formData,
+        });
+        showToast('Campaign created successfully', 'success');
+        navigate(`/campaigns/${response.data.id}`);
+      } else {
+        await campaignsAPI.update(id!, formData);
+        const response = await campaignsAPI.getById(id!);
+        setCampaign(response.data);
+        setEditing(false);
+        showToast('Campaign updated successfully', 'success');
+      }
     } catch (error) {
-      console.error('Error creating campaign:', error);
+      showToast('Failed to save campaign', 'error');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await campaignsAPI.delete(id!);
+      showToast('Campaign deleted successfully', 'success');
+      navigate('/campaigns');
+    } catch { showToast('Failed to delete campaign', 'error'); }
   };
 
   const handleStatusChange = async () => {
@@ -80,12 +122,14 @@ const CampaignDetail: React.FC = () => {
       if (campaign.status === 'active') {
         await campaignsAPI.pause(id!);
         setCampaign({ ...campaign, status: 'paused' });
+        showToast('Campaign paused', 'success');
       } else {
         await campaignsAPI.start(id!);
         setCampaign({ ...campaign, status: 'active' });
+        showToast('Campaign started', 'success');
       }
-    } catch (error) {
-      console.error('Error updating campaign status:', error);
+    } catch {
+      showToast('Failed to update campaign status', 'error');
     }
   };
 
@@ -98,26 +142,28 @@ const CampaignDetail: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading"><div className="spinner"></div></div>;
+    return (
+      <div style={{ padding: '24px' }}>
+        <SkeletonCard />
+        <div style={{ marginTop: '24px' }}><SkeletonCard /></div>
+        <div style={{ marginTop: '24px' }}><SkeletonCard /></div>
+      </div>
+    );
   }
 
-  if (isNew) {
+  if (isNew || editing) {
     return (
       <div>
-        <button
-          className="btn btn-secondary"
-          onClick={() => navigate('/campaigns')}
-          style={{ marginBottom: '24px' }}
-        >
-          <ArrowLeft size={18} />
-          Back to Campaigns
+        <button className="btn btn-secondary"
+          onClick={() => editing && !isNew ? setEditing(false) : navigate('/campaigns')}
+          style={{ marginBottom: '24px' }}>
+          <ArrowLeft size={18} /> {isNew ? 'Back to Campaigns' : 'Cancel Editing'}
         </button>
 
         <div className="card">
-          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>Create New Campaign</h2>
-          <form onSubmit={handleCreate}>
-            <div className="form-group">
-              <label className="form-label">Campaign Name *</label>
+          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>{isNew ? 'Create New Campaign' : 'Edit Campaign'}</h2>
+          <form onSubmit={handleSave}>
+            <FormField label="Campaign Name" error={errors.name} required>
               <input
                 type="text"
                 name="name"
@@ -125,9 +171,9 @@ const CampaignDetail: React.FC = () => {
                 value={formData.name}
                 onChange={handleInputChange}
                 placeholder="Enter campaign name"
-                required
+                style={errors.name ? { borderColor: '#dc2626' } : {}}
               />
-            </div>
+            </FormField>
 
             <div className="form-group">
               <label className="form-label">Description</label>
@@ -169,11 +215,12 @@ const CampaignDetail: React.FC = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button type="submit" className="btn btn-primary" disabled={saving || !formData.name}>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
                 <Save size={18} />
-                {saving ? 'Creating...' : 'Create Campaign'}
+                {saving ? 'Saving...' : isNew ? 'Create Campaign' : 'Save Changes'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => navigate('/campaigns')}>
+              <button type="button" className="btn btn-secondary"
+                onClick={() => isNew ? navigate('/campaigns') : setEditing(false)}>
                 Cancel
               </button>
             </div>
@@ -230,9 +277,11 @@ const CampaignDetail: React.FC = () => {
               {campaign.status === 'active' ? 'Pause' : 'Start'}
             </button>
           )}
-          <button className="btn btn-secondary">
-            <Edit size={18} />
-            Edit
+          <button className="btn btn-secondary" onClick={() => setEditing(true)}>
+            <Edit size={18} /> Edit
+          </button>
+          <button className="btn btn-danger" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 size={18} /> Delete
           </button>
         </div>
       </div>
@@ -373,7 +422,7 @@ const CampaignDetail: React.FC = () => {
             </thead>
             <tbody>
               {campaign.recentEmails?.map((email: any) => (
-                <tr key={email.id} onClick={() => handleEmailClick(email.contactId)}>
+                <tr key={email.id} onClick={() => handleEmailClick(email.contactId)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div className="avatar sm">{email.contactName?.[0]}</div>
@@ -440,6 +489,11 @@ const CampaignDetail: React.FC = () => {
           )}
         </div>
       )}
+
+      <ConfirmDialog isOpen={showDeleteDialog} title="Delete Campaign"
+        message={`Are you sure you want to delete "${campaign.name}"? This action cannot be undone.`}
+        confirmLabel="Delete" cancelLabel="Cancel" variant="danger"
+        onConfirm={handleDelete} onCancel={() => setShowDeleteDialog(false)} />
     </div>
   );
 };

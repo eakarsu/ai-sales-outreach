@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { analyticsAPI, campaignsAPI, activityAPI } from '../services/api';
+import { useToast } from '../components/Toast';
+import { SkeletonCard } from '../components/Skeleton';
 import {
   Mail,
   Eye,
@@ -12,13 +14,19 @@ import {
   Users,
   Target,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Sparkles,
+  Wand2,
+  Clock,
+  Shield,
+  BarChart3
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { team } = useAuth();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -37,7 +45,7 @@ const Dashboard: React.FC = () => {
         setCampaigns(campaignsRes.data.slice(0, 5));
         setActivities(activityRes.data);
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        showToast('Failed to load dashboard data', 'error');
       } finally {
         setLoading(false);
       }
@@ -256,6 +264,71 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* AI Features Cards */}
+      <div className="card" style={{ marginTop: '24px' }}>
+        <h3 style={{ marginBottom: '20px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Sparkles size={20} style={{ color: '#7c3aed' }} />
+          AI Features
+        </h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
+          <div
+            className="stat-card"
+            onClick={() => navigate('/ai/lead-scores')}
+            style={{ cursor: 'pointer', transition: 'all 0.2s', border: '2px solid transparent' }}
+            onMouseEnter={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+          >
+            <div className="stat-icon purple"><Target size={20} /></div>
+            <div style={{ fontWeight: '600', marginBottom: '4px' }}>Lead Scorer</div>
+            <div style={{ fontSize: '12px', color: '#6b7280' }}>AI-powered lead scoring</div>
+          </div>
+          <div
+            className="stat-card"
+            onClick={() => navigate('/ai/personalizations')}
+            style={{ cursor: 'pointer', transition: 'all 0.2s', border: '2px solid transparent' }}
+            onMouseEnter={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+          >
+            <div className="stat-icon blue"><Wand2 size={20} /></div>
+            <div style={{ fontWeight: '600', marginBottom: '4px' }}>Personalization</div>
+            <div style={{ fontSize: '12px', color: '#6b7280' }}>AI content personalization</div>
+          </div>
+          <div
+            className="stat-card"
+            onClick={() => navigate('/ai/best-times')}
+            style={{ cursor: 'pointer', transition: 'all 0.2s', border: '2px solid transparent' }}
+            onMouseEnter={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+          >
+            <div className="stat-icon green"><Clock size={20} /></div>
+            <div style={{ fontWeight: '600', marginBottom: '4px' }}>Best Time</div>
+            <div style={{ fontSize: '12px', color: '#6b7280' }}>Optimal contact timing</div>
+          </div>
+          <div
+            className="stat-card"
+            onClick={() => navigate('/ai/objections')}
+            style={{ cursor: 'pointer', transition: 'all 0.2s', border: '2px solid transparent' }}
+            onMouseEnter={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+          >
+            <div className="stat-icon orange"><Shield size={20} /></div>
+            <div style={{ fontWeight: '600', marginBottom: '4px' }}>Objection Handler</div>
+            <div style={{ fontSize: '12px', color: '#6b7280' }}>AI objection responses</div>
+          </div>
+          <div
+            className="stat-card"
+            onClick={() => navigate('/ai/forecasts')}
+            style={{ cursor: 'pointer', transition: 'all 0.2s', border: '2px solid transparent' }}
+            onMouseEnter={(e) => e.currentTarget.style.borderColor = '#7c3aed'}
+            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+          >
+            <div className="stat-icon indigo"><BarChart3 size={20} /></div>
+            <div style={{ fontWeight: '600', marginBottom: '4px' }}>Pipeline Forecast</div>
+            <div style={{ fontSize: '12px', color: '#6b7280' }}>AI revenue prediction</div>
           </div>
         </div>
       </div>

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { analyticsAPI } from '../services/api';
+import { useToast } from '../components/Toast';
+import { SkeletonCard } from '../components/Skeleton';
 import {
   Mail, Eye, MousePointer, MessageSquare, Calendar, DollarSign,
   TrendingUp, TrendingDown, Users, Target
@@ -14,6 +16,7 @@ import {
 const Analytics: React.FC = () => {
   const navigate = useNavigate();
   const { team } = useAuth();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [roiData, setRoiData] = useState<any>(null);
@@ -33,7 +36,7 @@ const Analytics: React.FC = () => {
         setRoiData(roiRes.data);
         setEmailStats(emailRes.data);
       } catch (error) {
-        console.error('Error fetching analytics:', error);
+        showToast('Failed to load analytics data', 'error');
       } finally {
         setLoading(false);
       }
@@ -47,7 +50,32 @@ const Analytics: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="loading"><div className="spinner"></div></div>;
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Analytics</h1>
+            <p className="page-subtitle">Track your sales outreach performance and ROI</p>
+          </div>
+        </div>
+        <div className="stats-grid">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <div className="stats-grid" style={{ marginBottom: '24px' }}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    );
   }
 
   const emailFunnelData = [

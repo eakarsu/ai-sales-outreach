@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { ToastProvider } from './components/Toast';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Campaigns from './pages/Campaigns';
@@ -27,6 +29,17 @@ import TaskDetail from './pages/TaskDetail';
 import Reports from './pages/Reports';
 import ReportDetail from './pages/ReportDetail';
 import Notifications from './pages/Notifications';
+import AILeadScorer from './pages/AILeadScorer';
+import AILeadScoreDetail from './pages/AILeadScoreDetail';
+import AIPersonalization from './pages/AIPersonalization';
+import AIPersonalizationDetail from './pages/AIPersonalizationDetail';
+import AIBestTime from './pages/AIBestTime';
+import AIBestTimeDetail from './pages/AIBestTimeDetail';
+import AIObjections from './pages/AIObjections';
+import AIObjectionDetail from './pages/AIObjectionDetail';
+import AIPipelineForecast from './pages/AIPipelineForecast';
+import AIPipelineForecastDetail from './pages/AIPipelineForecastDetail';
+import PasswordReset from './pages/PasswordReset';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -53,6 +66,7 @@ const AppRoutes: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/password-reset" element={<PasswordReset />} />
       <Route
         path="/*"
         element={
@@ -84,6 +98,16 @@ const AppRoutes: React.FC = () => {
                 <Route path="/reports/:id" element={<ReportDetail />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/ai/lead-scores" element={<AILeadScorer />} />
+                <Route path="/ai/lead-scores/:id" element={<AILeadScoreDetail />} />
+                <Route path="/ai/personalizations" element={<AIPersonalization />} />
+                <Route path="/ai/personalizations/:id" element={<AIPersonalizationDetail />} />
+                <Route path="/ai/best-times" element={<AIBestTime />} />
+                <Route path="/ai/best-times/:id" element={<AIBestTimeDetail />} />
+                <Route path="/ai/objections" element={<AIObjections />} />
+                <Route path="/ai/objections/:id" element={<AIObjectionDetail />} />
+                <Route path="/ai/forecasts" element={<AIPipelineForecast />} />
+                <Route path="/ai/forecasts/:id" element={<AIPipelineForecastDetail />} />
               </Routes>
             </Layout>
           </ProtectedRoute>
@@ -95,9 +119,13 @@ const AppRoutes: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
 

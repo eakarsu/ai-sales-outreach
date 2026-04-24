@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { reportsAPI } from '../services/api';
-import { FileText, Plus, Download, BarChart3, PieChart, TrendingUp, Users, Calendar } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonTable } from '../components/Skeleton';
+import { FileText, Plus, Download, Trash2, BarChart3, PieChart, TrendingUp, Users, Calendar, Search } from 'lucide-react';
 
 interface Report {
   id: string;
@@ -19,10 +22,13 @@ interface Report {
 const Reports: React.FC = () => {
   const navigate = useNavigate();
   const { team, user } = useAuth();
+  const { showToast } = useToast();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Report | null>(null);
   const [newReport, setNewReport] = useState({
     name: '',
     reportType: 'campaign_performance',
@@ -40,7 +46,7 @@ const Reports: React.FC = () => {
       const response = await reportsAPI.getAll({ teamId: team?.id });
       setReports(response.data);
     } catch (error) {
-      console.error('Error fetching reports:', error);
+      showToast('Failed to load reports', 'error');
     } finally {
       setLoading(false);
     }
@@ -58,11 +64,25 @@ const Reports: React.FC = () => {
       });
       setShowModal(false);
       setNewReport({ name: '', reportType: 'campaign_performance', dateRange: 'last_30_days' });
+      showToast('Report generated successfully', 'success');
       fetchReports();
     } catch (error) {
-      console.error('Error generating report:', error);
+      showToast('Failed to generate report', 'error');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleDeleteReport = async () => {
+    if (!deleteTarget) return;
+    try {
+      await reportsAPI.delete(deleteTarget.id);
+      setReports(reports.filter(r => r.id !== deleteTarget.id));
+      showToast('Report deleted successfully', 'success');
+    } catch (error) {
+      showToast('Failed to delete report', 'error');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -96,8 +116,9 @@ const Reports: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      showToast('Report downloaded', 'success');
     } catch (error) {
-      console.error('Error downloading report:', error);
+      showToast('Failed to download report', 'error');
     }
   };
 
@@ -117,8 +138,23 @@ const Reports: React.FC = () => {
     { value: 'year_to_date', label: 'Year to Date' },
   ];
 
+  const filteredReports = reports.filter(r =>
+    r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    r.reportType.replace(/_/g, ' ').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   if (loading) {
-    return <div className="loading">Loading reports...</div>;
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Reports</h1>
+            <p className="page-subtitle">Generate and view analytics reports</p>
+          </div>
+        </div>
+        <SkeletonTable />
+      </div>
+    );
   }
 
   return (
@@ -152,7 +188,20 @@ const Reports: React.FC = () => {
       </div>
 
       <div className="card">
-        <h3 style={{ fontWeight: '600', marginBottom: '20px' }}>Generated Reports</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 style={{ fontWeight: '600' }}>Generated Reports</h3>
+          <div style={{ position: 'relative', width: '280px' }}>
+            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+            <input
+              type="text"
+              className="form-input"
+              placeholder="Search reports..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ paddingLeft: '36px' }}
+            />
+          </div>
+        </div>
 
         <table className="data-table">
           <thead>
@@ -166,7 +215,7 @@ const Reports: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {reports.map(report => (
+            {filteredReports.map(report => (
               <tr key={report.id} onClick={() => navigate(`/reports/${report.id}`)} style={{ cursor: 'pointer' }}>
                 <td>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -179,22 +228,33 @@ const Reports: React.FC = () => {
                 <td>{report.createdBy}</td>
                 <td>{formatDate(report.createdAt)}</td>
                 <td>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ padding: '6px 12px' }}
-                    onClick={(e) => handleDownload(report.id, report.name, e)}
-                  >
-                    <Download size={16} />
-                  </button>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px' }}
+                      onClick={(e) => handleDownload(report.id, report.name, e)}
+                    >
+                      <Download size={16} />
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 12px', color: '#dc2626' }}
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(report); }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
 
-        {reports.length === 0 && (
+        {filteredReports.length === 0 && (
           <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
-            No reports generated yet. Click "Generate Report" to create your first report.
+            {searchQuery
+              ? `No reports matching "${searchQuery}"`
+              : 'No reports generated yet. Click "Generate Report" to create your first report.'}
           </div>
         )}
       </div>
@@ -268,6 +328,17 @@ const Reports: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title="Delete Report"
+        message={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleDeleteReport}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

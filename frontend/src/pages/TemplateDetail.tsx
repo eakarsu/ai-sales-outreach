@@ -2,21 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { templatesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
-import { ArrowLeft, Edit, Trash2, Copy, Sparkles, Eye, MessageSquare, BarChart3, Save } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonCard } from '../components/Skeleton';
+import { FormField, validateRequired } from '../components/FormValidation';
+import { ArrowLeft, Edit, Trash2, Copy, Sparkles, Eye, MessageSquare, BarChart3, Save, X } from 'lucide-react';
 
 const TemplateDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, team } = useAuth();
+  const { showToast } = useToast();
   const isNew = id === 'new';
   const [template, setTemplate] = useState<any>(null);
   const [loading, setLoading] = useState(!isNew);
+  const [editing, setEditing] = useState(isNew);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     subject: '',
     body: '',
     category: 'outreach',
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -25,8 +33,14 @@ const TemplateDetail: React.FC = () => {
       try {
         const response = await templatesAPI.getById(id);
         setTemplate(response.data);
+        setFormData({
+          name: response.data.name || '',
+          subject: response.data.subject || '',
+          body: response.data.body || '',
+          category: response.data.category || 'outreach',
+        });
       } catch (error) {
-        console.error('Error fetching template:', error);
+        showToast('Failed to load template', 'error');
       } finally {
         setLoading(false);
       }
@@ -35,55 +49,89 @@ const TemplateDetail: React.FC = () => {
     fetchTemplate();
   }, [id, isNew]);
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    const nameErr = validateRequired(formData.name, 'Template name');
+    const subjectErr = validateRequired(formData.subject, 'Subject line');
+    const bodyErr = validateRequired(formData.body, 'Email body');
+    if (nameErr) newErrors.name = nameErr;
+    if (subjectErr) newErrors.subject = subjectErr;
+    if (bodyErr) newErrors.body = bodyErr;
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) return;
     if (!team?.id) return;
 
     setSaving(true);
     try {
-      const response = await templatesAPI.create({
-        teamId: team.id,
-        createdBy: user?.id,
-        ...formData,
-      });
-      navigate(`/templates/${response.data.id}`);
+      if (isNew) {
+        const response = await templatesAPI.create({
+          teamId: team.id,
+          createdBy: user?.id,
+          ...formData,
+        });
+        showToast('Template created successfully', 'success');
+        navigate(`/templates/${response.data.id}`);
+      } else {
+        await templatesAPI.update(id!, formData);
+        const response = await templatesAPI.getById(id!);
+        setTemplate(response.data);
+        setEditing(false);
+        showToast('Template updated successfully', 'success');
+      }
     } catch (error) {
-      console.error('Error creating template:', error);
+      showToast('Failed to save template', 'error');
     } finally {
       setSaving(false);
     }
   };
 
+  const handleDelete = async () => {
+    try {
+      await templatesAPI.delete(id!);
+      showToast('Template deleted successfully', 'success');
+      navigate('/templates');
+    } catch { showToast('Failed to delete template', 'error'); }
+  };
+
   const handleCopyTemplate = () => {
     navigator.clipboard.writeText(`Subject: ${template.subject}\n\n${template.body}`);
+    showToast('Template copied to clipboard', 'success');
   };
 
   if (loading) {
-    return <div className="loading"><div className="spinner"></div></div>;
+    return (
+      <div style={{ padding: '24px' }}>
+        <SkeletonCard />
+        <div style={{ marginTop: '24px' }}><SkeletonCard /></div>
+        <div style={{ marginTop: '24px' }}><SkeletonCard /></div>
+      </div>
+    );
   }
 
-  if (isNew) {
+  if (isNew || editing) {
     return (
       <div>
-        <button
-          className="btn btn-secondary"
-          onClick={() => navigate('/templates')}
-          style={{ marginBottom: '24px' }}
-        >
-          <ArrowLeft size={18} />
-          Back to Templates
+        <button className="btn btn-secondary"
+          onClick={() => editing && !isNew ? setEditing(false) : navigate('/templates')}
+          style={{ marginBottom: '24px' }}>
+          <ArrowLeft size={18} /> {isNew ? 'Back to Templates' : 'Cancel Editing'}
         </button>
 
         <div className="card">
-          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>Create New Template</h2>
-          <form onSubmit={handleCreate}>
-            <div className="form-group">
-              <label className="form-label">Template Name *</label>
+          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>{isNew ? 'Create New Template' : 'Edit Template'}</h2>
+          <form onSubmit={handleSave}>
+            <FormField label="Template Name" error={errors.name} required>
               <input
                 type="text"
                 name="name"
@@ -91,9 +139,9 @@ const TemplateDetail: React.FC = () => {
                 value={formData.name}
                 onChange={handleInputChange}
                 placeholder="e.g., Cold Outreach - Tech Startups"
-                required
+                style={errors.name ? { borderColor: '#dc2626' } : {}}
               />
-            </div>
+            </FormField>
 
             <div className="form-group">
               <label className="form-label">Category</label>
@@ -111,8 +159,7 @@ const TemplateDetail: React.FC = () => {
               </select>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Subject Line *</label>
+            <FormField label="Subject Line" error={errors.subject} required>
               <input
                 type="text"
                 name="subject"
@@ -120,12 +167,11 @@ const TemplateDetail: React.FC = () => {
                 value={formData.subject}
                 onChange={handleInputChange}
                 placeholder="e.g., Quick question about {{company}}"
-                required
+                style={errors.subject ? { borderColor: '#dc2626' } : {}}
               />
-            </div>
+            </FormField>
 
-            <div className="form-group">
-              <label className="form-label">Email Body *</label>
+            <FormField label="Email Body" error={errors.body} required>
               <textarea
                 name="body"
                 className="form-input"
@@ -133,19 +179,20 @@ const TemplateDetail: React.FC = () => {
                 onChange={handleInputChange}
                 placeholder="Hi {{firstName}},&#10;&#10;I noticed that {{company}} is..."
                 rows={10}
-                required
+                style={errors.body ? { borderColor: '#dc2626' } : {}}
               />
-              <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-                Use variables like {'{{firstName}}'}, {'{{company}}'}, {'{{jobTitle}}'} for personalization
-              </p>
-            </div>
+            </FormField>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '-12px', marginBottom: '16px' }}>
+              Use variables like {'{{firstName}}'}, {'{{company}}'}, {'{{jobTitle}}'} for personalization
+            </p>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button type="submit" className="btn btn-primary" disabled={saving || !formData.name || !formData.subject}>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
                 <Save size={18} />
-                {saving ? 'Creating...' : 'Create Template'}
+                {saving ? 'Saving...' : isNew ? 'Create Template' : 'Save Changes'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => navigate('/templates')}>
+              <button type="button" className="btn btn-secondary"
+                onClick={() => isNew ? navigate('/templates') : setEditing(false)}>
                 Cancel
               </button>
             </div>
@@ -198,12 +245,13 @@ const TemplateDetail: React.FC = () => {
         </div>
         <div className="detail-actions">
           <button className="btn btn-secondary" onClick={handleCopyTemplate}>
-            <Copy size={18} />
-            Copy
+            <Copy size={18} /> Copy
           </button>
-          <button className="btn btn-primary">
-            <Edit size={18} />
-            Edit
+          <button className="btn btn-primary" onClick={() => setEditing(true)}>
+            <Edit size={18} /> Edit
+          </button>
+          <button className="btn btn-danger" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 size={18} /> Delete
           </button>
         </div>
       </div>
@@ -273,8 +321,11 @@ const TemplateDetail: React.FC = () => {
                 >
                   <code style={{ color: '#4f46e5', fontWeight: '500' }}>{`{{${variable}}}`}</code>
                   <button
-                    style={{ color: '#6b7280', background: 'none', padding: '4px' }}
-                    onClick={() => navigator.clipboard.writeText(`{{${variable}}}`)}
+                    style={{ color: '#6b7280', background: 'none', padding: '4px', border: 'none', cursor: 'pointer' }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(`{{${variable}}}`);
+                      showToast('Variable copied to clipboard', 'success');
+                    }}
                   >
                     <Copy size={14} />
                   </button>
@@ -294,6 +345,11 @@ const TemplateDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog isOpen={showDeleteDialog} title="Delete Template"
+        message={`Are you sure you want to delete "${template.name}"? This action cannot be undone.`}
+        confirmLabel="Delete" cancelLabel="Cancel" variant="danger"
+        onConfirm={handleDelete} onCancel={() => setShowDeleteDialog(false)} />
     </div>
   );
 };

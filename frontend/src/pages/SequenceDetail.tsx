@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { sequencesAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
-import { ArrowLeft, Play, Pause, Mail, Clock, Users, CheckCircle, TrendingUp, Save } from 'lucide-react';
+import { useToast } from '../components/Toast';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SkeletonCard } from '../components/Skeleton';
+import {
+  ArrowLeft, Play, Pause, Mail, Clock, Users, CheckCircle, TrendingUp,
+  Save, Edit, Trash2
+} from 'lucide-react';
 
 interface SequenceStep {
   id: string;
@@ -35,9 +41,12 @@ const SequenceDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, team } = useAuth();
+  const { showToast } = useToast();
   const isNew = id === 'new';
   const [sequence, setSequence] = useState<Sequence | null>(null);
   const [loading, setLoading] = useState(!isNew);
+  const [editing, setEditing] = useState(isNew);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -55,8 +64,13 @@ const SequenceDetail: React.FC = () => {
     try {
       const response = await sequencesAPI.getById(id!);
       setSequence(response.data);
+      setFormData({
+        name: response.data.name || '',
+        description: response.data.description || '',
+        triggerType: response.data.triggerType || 'manual',
+      });
     } catch (error) {
-      console.error('Error fetching sequence:', error);
+      showToast('Failed to load sequence', 'error');
     } finally {
       setLoading(false);
     }
@@ -67,23 +81,40 @@ const SequenceDetail: React.FC = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!team?.id) return;
 
     setSaving(true);
     try {
-      const response = await sequencesAPI.create({
-        teamId: team.id,
-        createdBy: user?.id,
-        ...formData,
-      });
-      navigate(`/sequences/${response.data.id}`);
+      if (isNew) {
+        const response = await sequencesAPI.create({
+          teamId: team.id,
+          createdBy: user?.id,
+          ...formData,
+        });
+        showToast('Sequence created successfully', 'success');
+        navigate(`/sequences/${response.data.id}`);
+      } else {
+        await sequencesAPI.bulkUpdate([id!], formData);
+        const response = await sequencesAPI.getById(id!);
+        setSequence(response.data);
+        setEditing(false);
+        showToast('Sequence updated successfully', 'success');
+      }
     } catch (error) {
-      console.error('Error creating sequence:', error);
+      showToast('Failed to save sequence', 'error');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await sequencesAPI.delete(id!);
+      showToast('Sequence deleted successfully', 'success');
+      navigate('/sequences');
+    } catch { showToast('Failed to delete sequence', 'error'); }
   };
 
   const handleToggleStatus = async () => {
@@ -91,29 +122,37 @@ const SequenceDetail: React.FC = () => {
     try {
       if (sequence.status === 'active') {
         await sequencesAPI.pause(sequence.id);
+        showToast('Sequence paused', 'success');
       } else {
         await sequencesAPI.activate(sequence.id);
+        showToast('Sequence activated', 'success');
       }
       fetchSequence();
     } catch (error) {
-      console.error('Error updating sequence:', error);
+      showToast('Failed to update sequence status', 'error');
     }
   };
 
   if (loading) {
-    return <div className="loading">Loading sequence...</div>;
+    return (
+      <div style={{ padding: '24px' }}>
+        <SkeletonCard />
+        <div style={{ marginTop: '24px' }}><SkeletonCard /></div>
+      </div>
+    );
   }
 
-  if (isNew) {
+  if (isNew || editing) {
     return (
       <div>
-        <button className="btn btn-secondary" onClick={() => navigate('/sequences')} style={{ marginBottom: '20px' }}>
-          <ArrowLeft size={18} /> Back to Sequences
+        <button className="btn btn-secondary" onClick={() => editing && !isNew ? setEditing(false) : navigate('/sequences')}
+          style={{ marginBottom: '24px' }}>
+          <ArrowLeft size={18} /> {isNew ? 'Back to Sequences' : 'Cancel Editing'}
         </button>
 
         <div className="card">
-          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>Create New Sequence</h2>
-          <form onSubmit={handleCreate}>
+          <h2 style={{ fontWeight: '600', marginBottom: '24px' }}>{isNew ? 'Create New Sequence' : 'Edit Sequence'}</h2>
+          <form onSubmit={handleSave}>
             <div className="form-group">
               <label className="form-label">Sequence Name *</label>
               <input
@@ -141,12 +180,7 @@ const SequenceDetail: React.FC = () => {
 
             <div className="form-group">
               <label className="form-label">Trigger Type</label>
-              <select
-                name="triggerType"
-                className="form-input"
-                value={formData.triggerType}
-                onChange={handleInputChange}
-              >
+              <select name="triggerType" className="form-input" value={formData.triggerType} onChange={handleInputChange}>
                 <option value="manual">Manual</option>
                 <option value="automatic">Automatic</option>
                 <option value="event_based">Event Based</option>
@@ -156,9 +190,10 @@ const SequenceDetail: React.FC = () => {
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button type="submit" className="btn btn-primary" disabled={saving || !formData.name}>
                 <Save size={18} />
-                {saving ? 'Creating...' : 'Create Sequence'}
+                {saving ? 'Saving...' : isNew ? 'Create Sequence' : 'Save Changes'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => navigate('/sequences')}>
+              <button type="button" className="btn btn-secondary"
+                onClick={() => isNew ? navigate('/sequences') : setEditing(false)}>
                 Cancel
               </button>
             </div>
@@ -169,7 +204,7 @@ const SequenceDetail: React.FC = () => {
   }
 
   if (!sequence) {
-    return <div>Sequence not found</div>;
+    return <div className="empty-state">Sequence not found</div>;
   }
 
   return (
@@ -186,6 +221,12 @@ const SequenceDetail: React.FC = () => {
         <div style={{ display: 'flex', gap: '12px' }}>
           <button className="btn btn-secondary" onClick={handleToggleStatus}>
             {sequence.status === 'active' ? <><Pause size={18} /> Pause</> : <><Play size={18} /> Activate</>}
+          </button>
+          <button className="btn btn-secondary" onClick={() => setEditing(true)}>
+            <Edit size={18} /> Edit
+          </button>
+          <button className="btn btn-danger" onClick={() => setShowDeleteDialog(true)}>
+            <Trash2 size={18} /> Delete
           </button>
         </div>
       </div>
@@ -225,7 +266,7 @@ const SequenceDetail: React.FC = () => {
         <h3 style={{ fontWeight: '600', marginBottom: '20px' }}>Sequence Steps</h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {sequence.steps.map((step, index) => (
+          {sequence.steps && sequence.steps.map((step, index) => (
             <div key={step.id} style={{
               display: 'flex',
               alignItems: 'flex-start',
@@ -271,13 +312,18 @@ const SequenceDetail: React.FC = () => {
             </div>
           ))}
 
-          {sequence.steps.length === 0 && (
+          {(!sequence.steps || sequence.steps.length === 0) && (
             <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
               No steps configured yet
             </div>
           )}
         </div>
       </div>
+
+      <ConfirmDialog isOpen={showDeleteDialog} title="Delete Sequence"
+        message={`Are you sure you want to delete "${sequence.name}"? This action cannot be undone.`}
+        confirmLabel="Delete" cancelLabel="Cancel" variant="danger"
+        onConfirm={handleDelete} onCancel={() => setShowDeleteDialog(false)} />
     </div>
   );
 };

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { integrationsAPI } from '../services/api';
+import { useToast } from '../components/Toast';
+import { SkeletonCard } from '../components/Skeleton';
 import {
   Plug, Plus, Search, Check, X, RefreshCw,
   Mail, Database, MessageSquare, Calendar, BarChart3, Zap
@@ -10,6 +12,7 @@ import {
 const Integrations: React.FC = () => {
   const navigate = useNavigate();
   const { team } = useAuth();
+  const { showToast } = useToast();
   const [integrations, setIntegrations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -21,7 +24,7 @@ const Integrations: React.FC = () => {
         const response = await integrationsAPI.getAll({ teamId: team.id });
         setIntegrations(response.data);
       } catch (error) {
-        console.error('Error fetching integrations:', error);
+        showToast('Failed to load integrations', 'error');
       } finally {
         setLoading(false);
       }
@@ -41,8 +44,9 @@ const Integrations: React.FC = () => {
       setIntegrations(integrations.map(i =>
         i.id === integrationId ? { ...i, status: 'connected' } : i
       ));
+      showToast('Integration connected successfully', 'success');
     } catch (error) {
-      console.error('Error connecting integration:', error);
+      showToast('Failed to connect integration', 'error');
     }
   };
 
@@ -53,8 +57,9 @@ const Integrations: React.FC = () => {
       setIntegrations(integrations.map(i =>
         i.id === integrationId ? { ...i, status: 'disconnected' } : i
       ));
+      showToast('Integration disconnected', 'info');
     } catch (error) {
-      console.error('Error disconnecting integration:', error);
+      showToast('Failed to disconnect integration', 'error');
     }
   };
 
@@ -83,7 +88,25 @@ const Integrations: React.FC = () => {
   ];
 
   if (loading) {
-    return <div className="loading"><div className="spinner"></div></div>;
+    const connectedCount = 0;
+    return (
+      <div>
+        <div className="page-header">
+          <div>
+            <h1 className="page-title">Integrations</h1>
+            <p className="page-subtitle">Loading integrations...</p>
+          </div>
+        </div>
+        <div className="card-grid">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      </div>
+    );
   }
 
   const connectedCount = integrations.filter(i => i.status === 'connected').length;

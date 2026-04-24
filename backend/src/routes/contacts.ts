@@ -3,39 +3,67 @@ import { pool } from '../config/database';
 
 const router = Router();
 
+// Allowed sort columns for contacts
+const CONTACT_SORT_COLUMNS: Record<string, string> = {
+  firstName: 'first_name',
+  lastName: 'last_name',
+  email: 'email',
+  company: 'company',
+  status: 'status',
+  leadScore: 'lead_score',
+  createdAt: 'created_at',
+  lastContactedAt: 'last_contacted_at',
+};
+
 router.get('/', async (req, res) => {
   try {
-    const { teamId, status, search, limit = 50, offset = 0 } = req.query;
+    const { teamId, status, search, page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
+
+    const sortColumn = CONTACT_SORT_COLUMNS[sortBy as string] || 'created_at';
+    const order = sortOrder === 'asc' ? 'ASC' : 'DESC';
 
     let query = `SELECT * FROM contacts WHERE 1=1`;
+    let countQuery = `SELECT COUNT(*) FROM contacts WHERE 1=1`;
     const params: any[] = [];
+    const countParams: any[] = [];
     let paramIndex = 1;
+    let countParamIndex = 1;
 
     if (teamId) {
       query += ` AND team_id = $${paramIndex++}`;
+      countQuery += ` AND team_id = $${countParamIndex++}`;
       params.push(teamId);
+      countParams.push(teamId);
     }
 
     if (status) {
       query += ` AND status = $${paramIndex++}`;
+      countQuery += ` AND status = $${countParamIndex++}`;
       params.push(status);
+      countParams.push(status);
     }
 
     if (search) {
       query += ` AND (first_name ILIKE $${paramIndex} OR last_name ILIKE $${paramIndex} OR email ILIKE $${paramIndex} OR company ILIKE $${paramIndex})`;
+      countQuery += ` AND (first_name ILIKE $${countParamIndex} OR last_name ILIKE $${countParamIndex} OR email ILIKE $${countParamIndex} OR company ILIKE $${countParamIndex})`;
       params.push(`%${search}%`);
+      countParams.push(`%${search}%`);
       paramIndex++;
+      countParamIndex++;
     }
 
-    query += ` ORDER BY lead_score DESC, created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
-    params.push(limit, offset);
+    query += ` ORDER BY ${sortColumn} ${order} LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limitNum, offset);
 
-    const result = await pool.query(query, params);
+    const [result, countResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams)
+    ]);
 
-    const countResult = await pool.query(
-      'SELECT COUNT(*) FROM contacts' + (teamId ? ' WHERE team_id = $1' : ''),
-      teamId ? [teamId] : []
-    );
+    const total = parseInt(countResult.rows[0].count);
 
     res.json({
       contacts: result.rows.map(c => ({
@@ -57,7 +85,10 @@ router.get('/', async (req, res) => {
         createdAt: c.created_at,
         updatedAt: c.updated_at
       })),
-      total: parseInt(countResult.rows[0].count)
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
     console.error('Error fetching contacts:', error);
@@ -190,7 +221,7 @@ router.post('/bulk', async (req, res) => {
       const result = await pool.query(
         `INSERT INTO contacts (team_id, email, first_name, last_name, company, job_title, source)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (team_id, email) DO NOTHING
+         ON CONFLICT DO NOTHING
          RETURNING id`,
         [teamId, contact.email, contact.firstName, contact.lastName, contact.company, contact.jobTitle, 'bulk_import']
       );
@@ -202,6 +233,96 @@ router.post('/bulk', async (req, res) => {
     res.status(201).json({ imported: insertedIds.length });
   } catch (error) {
     console.error('Error bulk importing contacts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Bulk delete
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'At least one ID is required' });
+    }
+    const result = await pool.query(
+      `DELETE FROM contacts WHERE id = ANY($1::uuid[]) RETURNING id`,
+      [ids]
+    );
+    res.json({ deleted: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk deleting contacts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Bulk update
+router.post('/bulk-update', async (req, res) => {
+  try {
+    const { ids, updates } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'At least one ID is required' });
+    }
+    const setClauses: string[] = [];
+    const params: any[] = [ids];
+    let paramIndex = 2;
+
+    if (updates.status) {
+      setClauses.push(`status = $${paramIndex++}`);
+      params.push(updates.status);
+    }
+    if (updates.leadScore !== undefined) {
+      setClauses.push(`lead_score = $${paramIndex++}`);
+      params.push(updates.leadScore);
+    }
+    if (updates.source) {
+      setClauses.push(`source = $${paramIndex++}`);
+      params.push(updates.source);
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    setClauses.push('updated_at = CURRENT_TIMESTAMP');
+
+    const result = await pool.query(
+      `UPDATE contacts SET ${setClauses.join(', ')} WHERE id = ANY($1::uuid[]) RETURNING id`,
+      params
+    );
+    res.json({ updated: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk updating contacts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// CSV export
+router.get('/export/csv', async (req, res) => {
+  try {
+    const { teamId } = req.query;
+    let query = 'SELECT * FROM contacts';
+    const params: any[] = [];
+    if (teamId) {
+      query += ' WHERE team_id = $1';
+      params.push(teamId);
+    }
+    query += ' ORDER BY created_at DESC';
+
+    const result = await pool.query(query, params);
+
+    const headers = ['First Name', 'Last Name', 'Email', 'Company', 'Job Title', 'Phone', 'Status', 'Lead Score', 'Source', 'Created At'];
+    const rows = result.rows.map(c => [
+      c.first_name, c.last_name, c.email, c.company, c.job_title,
+      c.phone, c.status, c.lead_score, c.source, c.created_at
+    ]);
+
+    const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${(v || '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=contacts.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Error exporting contacts:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
