@@ -40,6 +40,13 @@ import AIObjectionDetail from './pages/AIObjectionDetail';
 import AIPipelineForecast from './pages/AIPipelineForecast';
 import AIPipelineForecastDetail from './pages/AIPipelineForecastDetail';
 import PasswordReset from './pages/PasswordReset';
+import AIWarmupScheduler from './pages/AIWarmupScheduler';
+import AICompetitiveIntel from './pages/AICompetitiveIntel';
+import AIPlaybookLearner from './pages/AIPlaybookLearner';
+import AIProspectResearch from './pages/AIProspectResearch';
+import AIDealMomentum from './pages/AIDealMomentum';
+import AIObjectionPredictor from './pages/AIObjectionPredictor';
+import Deals from './pages/Deals';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -108,6 +115,13 @@ const AppRoutes: React.FC = () => {
                 <Route path="/ai/objections/:id" element={<AIObjectionDetail />} />
                 <Route path="/ai/forecasts" element={<AIPipelineForecast />} />
                 <Route path="/ai/forecasts/:id" element={<AIPipelineForecastDetail />} />
+                <Route path="/ai/warmup" element={<AIWarmupScheduler />} />
+                <Route path="/ai/competitive-intel" element={<AICompetitiveIntel />} />
+                <Route path="/ai/playbook" element={<AIPlaybookLearner />} />
+                <Route path="/ai/prospect-research" element={<AIProspectResearch />} />
+                <Route path="/ai/deal-momentum" element={<AIDealMomentum />} />
+                <Route path="/ai/objection-predictor" element={<AIObjectionPredictor />} />
+                <Route path="/deals" element={<Deals />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

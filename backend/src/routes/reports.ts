@@ -1,33 +1,51 @@
 import { Router } from 'express';
 import { pool } from '../config/database';
 
+import { authenticate } from '../middleware/auth';
+
 const router = Router();
+router.use(authenticate);
 
 // Get all reports
 router.get('/', async (req, res) => {
   try {
-    const { teamId } = req.query;
+    const { teamId, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
 
-    const result = await pool.query(
-      `SELECT r.*, u.first_name, u.last_name
-       FROM reports r
-       LEFT JOIN users u ON r.created_by = u.id
-       WHERE r.team_id = $1
-       ORDER BY r.created_at DESC`,
-      [teamId]
-    );
+    const [result, countResult] = await Promise.all([
+      pool.query(
+        `SELECT r.*, u.first_name, u.last_name
+         FROM reports r
+         LEFT JOIN users u ON r.created_by = u.id
+         WHERE r.team_id = $1
+         ORDER BY r.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [teamId, limitNum, offset]
+      ),
+      pool.query('SELECT COUNT(*) FROM reports WHERE team_id = $1', [teamId]),
+    ]);
 
-    res.json(result.rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      description: r.description,
-      reportType: r.report_type,
-      dateRange: r.date_range,
-      status: r.status,
-      fileUrl: r.file_url,
-      createdBy: r.first_name ? `${r.first_name} ${r.last_name}` : null,
-      createdAt: r.created_at,
-    })));
+    const total = parseInt(countResult.rows[0].count);
+
+    res.json({
+      reports: result.rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        reportType: r.report_type,
+        dateRange: r.date_range,
+        status: r.status,
+        fileUrl: r.file_url,
+        createdBy: r.first_name ? `${r.first_name} ${r.last_name}` : null,
+        createdAt: r.created_at,
+      })),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
   } catch (error) {
     console.error('Error fetching reports:', error);
     res.status(500).json({ error: 'Internal server error' });

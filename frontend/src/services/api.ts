@@ -181,6 +181,16 @@ export const aiAPI = {
   createForecast: (data: any) => api.post('/ai/forecasts', data),
   updateForecast: (id: string, data: any) => api.put(`/ai/forecasts/${id}`, data),
   deleteForecast: (id: string) => api.delete(`/ai/forecasts/${id}`),
+
+  // Deal Momentum
+  getMomentumScores: (teamId: string) => api.get('/contacts/momentum/all', { params: { teamId } }),
+  calculateMomentum: (data: any) => api.post('/contacts/momentum/calculate', data),
+  deleteMomentum: (id: string) => api.delete(`/contacts/momentum/${id}`),
+
+  // Predicted Objections (mapped to existing objections endpoints)
+  getPredictedObjections: (teamId: string) => api.get('/ai/objections', { params: { teamId } }),
+  predictObjections: (data: any) => api.post('/ai/objections/handle', data),
+  deletePredictedObjection: (id: string) => api.delete(`/ai/objections/${id}`),
 };
 
 // Activity
@@ -249,6 +259,62 @@ export const reportsAPI = {
   getById: (id: string) => api.get(`/reports/${id}`),
   generate: (data: any) => api.post('/reports/generate', data),
   delete: (id: string) => api.delete(`/reports/${id}`),
+};
+
+// Deals / Pipeline
+export const dealsAPI = {
+  getAll: (params?: any) => api.get('/deals', { params }),
+  getById: (id: string) => api.get(`/deals/${id}`),
+  create: (data: any) => api.post('/deals', data),
+  update: (id: string, data: any) => api.put(`/deals/${id}`, data),
+  delete: (id: string) => api.delete(`/deals/${id}`),
+  aiScore: (id: string, data: any) => api.post(`/deals/${id}/ai-score`, data),
+};
+
+// Warmup Scheduler
+export const warmupAPI = {
+  getAll: (params?: any) => api.get('/ai/warmup', { params }),
+  getById: (id: string) => api.get(`/ai/warmup/${id}`),
+  create: (data: any) => api.post('/ai/warmup/create', data),
+  advance: (id: string) => api.post(`/ai/warmup/${id}/advance`),
+};
+
+// Competitive Intelligence
+export const competitiveIntelAPI = {
+  getAll: (params?: any) => api.get('/ai/competitive-intel', { params }),
+  analyze: (data: any) => api.post('/ai/competitive-intel/analyze', data),
+};
+
+// Playbook
+export const playbookAPI = {
+  getAll: (params?: any) => api.get('/ai/playbook', { params }),
+  generate: (data: any) => api.post('/ai/playbook/generate', data),
+  getInsights: (teamId: string) => api.get('/ai/playbook/insights', { params: { teamId } }),
+};
+
+// Prospect Research
+export const prospectResearchAPI = {
+  getAll: (params?: any) => api.get('/ai/prospect-research', { params }),
+  research: (data: any) => api.post('/ai/prospect-research', data),
+};
+
+// Reply Classifier
+export const replyClassifierAPI = {
+  getAll: (params?: any) => api.get('/ai/classify-reply', { params }),
+  classify: (data: any) => api.post('/ai/classify-reply', data),
+  action: (id: string) => api.post(`/ai/classify-reply/${id}/action`),
+};
+
+// Leaderboard & Coaching
+export const leaderboardAPI = {
+  get: (teamId: string) => api.get('/analytics/leaderboard', { params: { teamId } }),
+  getCoachingTips: (userId: string, teamId: string) => api.get(`/analytics/leaderboard/coaching/${userId}`, { params: { teamId } }),
+};
+
+// Webhooks
+export const webhooksAPI = {
+  configure: (data: any) => api.post('/webhooks/configure', data),
+  test: (data: any) => api.post('/webhooks/test', data),
 };
 
 export default api;

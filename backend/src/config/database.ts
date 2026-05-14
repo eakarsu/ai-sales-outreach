@@ -11,6 +11,9 @@ export const pool = new Pool({
   database: process.env.DB_NAME || 'ai_sales_outreach',
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'postgres',
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
 export const initDatabase = async () => {
@@ -506,6 +509,189 @@ export const initDatabase = async () => {
         ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
       EXCEPTION WHEN duplicate_column THEN NULL;
       END $$;
+    `);
+
+    // Add tracking_id column to emails_sent if not exists
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE emails_sent ADD COLUMN IF NOT EXISTS tracking_id UUID DEFAULT gen_random_uuid();
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$;
+    `);
+
+    // Create index on tracking_id
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_emails_sent_tracking_id ON emails_sent (tracking_id);
+    `);
+
+    // Webhook configurations table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS webhook_configurations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        url VARCHAR(500) NOT NULL,
+        events JSONB DEFAULT '[]',
+        secret VARCHAR(255),
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(team_id, url)
+      )
+    `);
+
+    // Deal momentum scores table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS deal_momentum (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+        score INTEGER DEFAULT 0,
+        trend VARCHAR(20) DEFAULT 'stalled',
+        days_to_close INTEGER,
+        reasoning TEXT,
+        next_action TEXT,
+        open_rate_percent INTEGER DEFAULT 0,
+        reply_rate_percent INTEGER DEFAULT 0,
+        days_since_last_email INTEGER,
+        total_emails INTEGER DEFAULT 0,
+        warning_signals JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    // Add warning_signals column if missing (migration)
+    await client.query(`
+      ALTER TABLE deal_momentum ADD COLUMN IF NOT EXISTS warning_signals JSONB DEFAULT '[]'
+    `).catch(() => {});
+
+    // AI results table (structured JSON storage)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_results (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id),
+        feature VARCHAR(100) NOT NULL,
+        input_hash VARCHAR(64),
+        result JSONB NOT NULL,
+        tokens_used INTEGER DEFAULT 0,
+        model VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_ai_results_feature ON ai_results (feature, team_id);
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_ai_results_input_hash ON ai_results (input_hash) WHERE input_hash IS NOT NULL;
+    `);
+
+    // Deals / Pipeline table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS deals (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
+        campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+        owner_id UUID REFERENCES users(id),
+        title VARCHAR(255) NOT NULL,
+        value DECIMAL(12,2) DEFAULT 0,
+        stage VARCHAR(50) DEFAULT 'prospecting',
+        probability INTEGER DEFAULT 0,
+        close_date DATE,
+        win_probability DECIMAL(5,2) DEFAULT 0,
+        ai_win_probability DECIMAL(5,2),
+        ai_analysis TEXT,
+        notes TEXT,
+        lost_reason TEXT,
+        won_at TIMESTAMP,
+        lost_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Warmup Schedules
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS warmup_schedules (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        email_address VARCHAR(255) NOT NULL,
+        status VARCHAR(50) DEFAULT 'active',
+        current_day INTEGER DEFAULT 1,
+        total_days INTEGER DEFAULT 30,
+        daily_limit INTEGER DEFAULT 5,
+        current_volume INTEGER DEFAULT 0,
+        ai_curve JSONB DEFAULT '[]',
+        ai_recommendations TEXT[],
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Competitive Intel
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_competitive_intel (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        company_name VARCHAR(255),
+        industry VARCHAR(100),
+        competitors JSONB DEFAULT '[]',
+        differentiators TEXT[],
+        objection_responses JSONB DEFAULT '{}',
+        positioning_tips TEXT[],
+        ai_confidence DECIMAL(5,2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Playbooks
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_playbooks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        insights JSONB DEFAULT '[]',
+        top_patterns JSONB DEFAULT '[]',
+        recommended_sequences JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // AI Prospect Research
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_prospect_research (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+        company_overview TEXT,
+        tech_stack TEXT[],
+        pain_points TEXT[],
+        trigger_events TEXT[],
+        decision_makers JSONB DEFAULT '[]',
+        recommended_approach TEXT,
+        ai_confidence DECIMAL(5,2) DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Reply Classifications
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reply_classifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+        contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
+        email_id UUID REFERENCES emails_sent(id) ON DELETE CASCADE,
+        classification VARCHAR(50) NOT NULL,
+        sentiment VARCHAR(50),
+        draft_response TEXT,
+        confidence DECIMAL(5,2) DEFAULT 0,
+        raw_reply TEXT,
+        actioned BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
     `);
 
     console.log('Database tables created successfully');

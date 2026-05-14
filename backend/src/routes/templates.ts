@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { pool } from '../config/database';
 
+import { authenticate } from '../middleware/auth';
+
 const router = Router();
+router.use(authenticate);
 
 // Allowed sort columns for templates
 const TEMPLATE_SORT_COLUMNS: Record<string, string> = {

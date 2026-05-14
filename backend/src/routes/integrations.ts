@@ -1,34 +1,58 @@
 import { Router } from 'express';
 import { pool } from '../config/database';
 
+import { authenticate } from '../middleware/auth';
+
 const router = Router();
+router.use(authenticate);
 
 router.get('/', async (req, res) => {
   try {
-    const { teamId } = req.query;
+    const { teamId, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
 
     let query = 'SELECT * FROM integrations';
+    let countQuery = 'SELECT COUNT(*) FROM integrations';
     const params: any[] = [];
+    const countParams: any[] = [];
 
     if (teamId) {
       query += ' WHERE team_id = $1';
+      countQuery += ' WHERE team_id = $1';
       params.push(teamId);
+      countParams.push(teamId);
+      query += ' ORDER BY name LIMIT $2 OFFSET $3';
+      params.push(limitNum, offset);
+    } else {
+      query += ' ORDER BY name LIMIT $1 OFFSET $2';
+      params.push(limitNum, offset);
     }
 
-    query += ' ORDER BY name';
+    const [result, countResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams),
+    ]);
 
-    const result = await pool.query(query, params);
+    const total = parseInt(countResult.rows[0].count);
 
-    res.json(result.rows.map(i => ({
-      id: i.id,
-      teamId: i.team_id,
-      name: i.name,
-      type: i.type,
-      status: i.status,
-      config: i.config,
-      lastSyncAt: i.last_sync_at,
-      createdAt: i.created_at
-    })));
+    res.json({
+      integrations: result.rows.map(i => ({
+        id: i.id,
+        teamId: i.team_id,
+        name: i.name,
+        type: i.type,
+        status: i.status,
+        config: i.config,
+        lastSyncAt: i.last_sync_at,
+        createdAt: i.created_at
+      })),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
   } catch (error) {
     console.error('Error fetching integrations:', error);
     res.status(500).json({ error: 'Internal server error' });

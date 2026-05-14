@@ -28,16 +28,41 @@ import meetingsRoutes from './routes/meetings';
 import tasksRoutes from './routes/tasks';
 import notificationsRoutes from './routes/notifications';
 import reportsRoutes from './routes/reports';
+import trackingRoutes from './routes/tracking';
+import webhooksRoutes from './routes/webhooks';
+import momentumRoutes from './routes/momentum';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Import new routes
+import warmupRoutes from './routes/warmup';
+import competitiveIntelRoutes from './routes/competitiveIntel';
+import playbookRoutes from './routes/playbook';
+import prospectResearchRoutes from './routes/prospectResearch';
+import dealsRoutes from './routes/deals';
+import replyClassifierRoutes from './routes/replyClassifier';
+import leaderboardRoutes from './routes/leaderboard';
+
 // Security Middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+    },
+  },
 }));
-app.use(cors());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+}));
 app.use(express.json({ limit: '10mb' }));
 
 // Input sanitization
@@ -65,6 +90,16 @@ app.use('/api/meetings', meetingsRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/track', trackingRoutes);
+app.use('/api/webhooks', webhooksRoutes);
+app.use('/api/contacts', momentumRoutes);
+app.use('/api/ai/warmup', warmupRoutes);
+app.use('/api/ai/competitive-intel', competitiveIntelRoutes);
+app.use('/api/ai/playbook', playbookRoutes);
+app.use('/api/ai/prospect-research', prospectResearchRoutes);
+app.use('/api/deals', dealsRoutes);
+app.use('/api/ai/classify-reply', replyClassifierRoutes);
+app.use('/api/analytics/leaderboard', leaderboardRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -93,3 +128,34 @@ const start = async () => {
 };
 
 start();
+
+// BATCH_00_AUDIT_MOUNTS
+import meetingTranscriptRoutes from './routes/meetingTranscript';
+import battlecardsRoutes from './routes/battlecards';
+import voiceCoachingRoutes from './routes/voiceCoaching';
+import methodologyPlaybookRoutes from './routes/methodologyPlaybook';
+import enrichmentBridgeRoutes from './routes/enrichmentBridge';
+app.use('/api/meeting-transcript', meetingTranscriptRoutes);
+app.use('/api/battlecards', battlecardsRoutes);
+app.use('/api/voice-coaching', voiceCoachingRoutes);
+app.use('/api/methodology-playbook', methodologyPlaybookRoutes);
+app.use('/api/enrichment-bridge', enrichmentBridgeRoutes);
+// === Batch 00 Gaps & Frontend Mounts ===
+import gapAiLiveConversationCoachingCallsRouter from './routes/gap_ai_live_conversation_coaching_calls';
+import gapAiCompetitorWinLossAnalysisRouter from './routes/gap_ai_competitor_win_loss_analysis';
+import gapAiAccountTierScoringIcpRouter from './routes/gap_ai_account_tier_scoring_icp';
+import gapAiMultilingualOutreachGenerationRouter from './routes/gap_ai_multilingual_outreach_generation';
+import gapMultiChannelAssetLibraryVideoRouter from './routes/gap_multi_channel_asset_library_video';
+import gapWorkflowApprovalGatesComplianceReviewRouter from './routes/gap_workflow_approval_gates_compliance_review';
+import gapLimitedCustomFieldAutomationDataRouter from './routes/gap_limited_custom_field_automation_data';
+import gapRevenueAttributionModelingBeyondSimpleRouter from './routes/gap_revenue_attribution_modeling_beyond_simple';
+import gapQbrExecutiveSummaryBuilderRouter from './routes/gap_qbr_executive_summary_builder';
+app.use('/api/gap-ai-live-conversation-coaching-calls', gapAiLiveConversationCoachingCallsRouter);
+app.use('/api/gap-ai-competitor-win-loss-analysis', gapAiCompetitorWinLossAnalysisRouter);
+app.use('/api/gap-ai-account-tier-scoring-icp', gapAiAccountTierScoringIcpRouter);
+app.use('/api/gap-ai-multilingual-outreach-generation', gapAiMultilingualOutreachGenerationRouter);
+app.use('/api/gap-multi-channel-asset-library-video', gapMultiChannelAssetLibraryVideoRouter);
+app.use('/api/gap-workflow-approval-gates-compliance-review', gapWorkflowApprovalGatesComplianceReviewRouter);
+app.use('/api/gap-limited-custom-field-automation-data', gapLimitedCustomFieldAutomationDataRouter);
+app.use('/api/gap-revenue-attribution-modeling-beyond-simple', gapRevenueAttributionModelingBeyondSimpleRouter);
+app.use('/api/gap-qbr-executive-summary-builder', gapQbrExecutiveSummaryBuilderRouter);

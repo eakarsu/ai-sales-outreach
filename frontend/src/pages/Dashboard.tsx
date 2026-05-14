@@ -42,8 +42,10 @@ const Dashboard: React.FC = () => {
           activityAPI.getAll({ teamId: team.id, limit: 10 })
         ]);
         setDashboardData(dashboardRes.data);
-        setCampaigns(campaignsRes.data.slice(0, 5));
-        setActivities(activityRes.data);
+        // campaigns response is paginated: { campaigns: [], total, page, ... }
+        setCampaigns((campaignsRes.data.campaigns || campaignsRes.data || []).slice(0, 5));
+        // activity response is paginated: { activities: [], total, ... }
+        setActivities(activityRes.data.activities || activityRes.data || []);
       } catch (error) {
         showToast('Failed to load dashboard data', 'error');
       } finally {
