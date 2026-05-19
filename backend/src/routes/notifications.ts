@@ -1,37 +1,56 @@
 import { Router } from 'express';
 import { pool } from '../config/database';
 
-const router = Router();
+import { authenticate } from '../middleware/auth';
 
-// Get all notifications for user
+const router = Router();
+router.use(authenticate);
+
+// Get all notifications for user (paginated)
 router.get('/', async (req, res) => {
   try {
-    const { userId, unreadOnly, limit = 50 } = req.query;
+    const { userId, unreadOnly, page = 1, limit = 20 } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string) || 20));
+    const offset = (pageNum - 1) * limitNum;
 
-    let query = `
-      SELECT * FROM notifications
-      WHERE user_id = $1
-    `;
+    let baseWhere = `WHERE user_id = $1`;
     const params: any[] = [userId];
+    let paramIndex = 2;
 
     if (unreadOnly === 'true') {
-      query += ' AND is_read = false';
+      baseWhere += ' AND is_read = false';
     }
 
-    query += ' ORDER BY created_at DESC LIMIT $2';
-    params.push(parseInt(limit as string));
+    const query = `SELECT * FROM notifications ${baseWhere} ORDER BY created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+    params.push(limitNum, offset);
 
-    const result = await pool.query(query, params);
+    const countParams: any[] = [userId];
+    let countWhere = `WHERE user_id = $1`;
+    if (unreadOnly === 'true') countWhere += ' AND is_read = false';
 
-    res.json(result.rows.map(n => ({
-      id: n.id,
-      type: n.type,
-      title: n.title,
-      message: n.message,
-      link: n.link,
-      isRead: n.is_read,
-      createdAt: n.created_at,
-    })));
+    const [result, countResult] = await Promise.all([
+      pool.query(query, params),
+      pool.query(`SELECT COUNT(*) FROM notifications ${countWhere}`, countParams),
+    ]);
+
+    const total = parseInt(countResult.rows[0].count);
+
+    res.json({
+      notifications: result.rows.map(n => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        link: n.link,
+        isRead: n.is_read,
+        createdAt: n.created_at,
+      })),
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    });
   } catch (error) {
     console.error('Error fetching notifications:', error);
     res.status(500).json({ error: 'Internal server error' });

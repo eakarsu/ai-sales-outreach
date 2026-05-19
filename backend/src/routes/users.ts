@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { pool } from '../config/database';
 
+import { authenticate } from '../middleware/auth';
+
 const router = Router();
+router.use(authenticate);
 
 router.get('/', async (req, res) => {
   try {

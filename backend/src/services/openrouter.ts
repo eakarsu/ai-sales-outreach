@@ -20,20 +20,32 @@ interface OpenRouterResponse {
   };
 }
 
+const OPENROUTER_TIMEOUT_MS = 30_000; // 30-second timeout
+
+export class OpenRouterTimeoutError extends Error {
+  constructor() {
+    super('AI service timeout');
+    this.name = 'OpenRouterTimeoutError';
+  }
+}
+
 export const callOpenRouter = async (
   messages: ChatMessage[],
   options?: {
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    timeoutMs?: number;
   }
 ): Promise<{ content: string; tokensUsed: number }> => {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = options?.model || process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet';
+  const model = options?.model || process.env.OPENROUTER_MODEL || 'anthropic/claude-3-5-sonnet-20241022';
 
   if (!apiKey || apiKey === 'your-openrouter-api-key-here') {
     throw new Error('OpenRouter API key not configured');
   }
+
+  const timeoutMs = options?.timeoutMs ?? OPENROUTER_TIMEOUT_MS;
 
   try {
     const response = await axios.post<OpenRouterResponse>(
@@ -45,6 +57,7 @@ export const callOpenRouter = async (
         max_tokens: options?.maxTokens ?? 1500,
       },
       {
+        timeout: timeoutMs,
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
@@ -59,6 +72,10 @@ export const callOpenRouter = async (
 
     return { content, tokensUsed };
   } catch (error: any) {
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      console.error('OpenRouter API timed out after', timeoutMs, 'ms');
+      throw new OpenRouterTimeoutError();
+    }
     console.error('OpenRouter API error:', error.response?.data || error.message);
     throw new Error(error.response?.data?.error?.message || 'Failed to call OpenRouter API');
   }

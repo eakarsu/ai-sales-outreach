@@ -23,7 +23,13 @@ import {
   Wand2,
   Clock,
   MessageCircle,
-  TrendingUp
+  TrendingUp,
+  Flame,
+  Globe,
+  BookOpen,
+  Search,
+  DollarSign,
+  Trophy
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -49,7 +55,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { path: '/ai/best-times', label: 'Best Time', icon: Clock, section: 'ai' },
     { path: '/ai/objections', label: 'Objection Handler', icon: MessageCircle, section: 'ai' },
     { path: '/ai/forecasts', label: 'Pipeline Forecast', icon: TrendingUp, section: 'ai' },
+    { path: '/ai/warmup', label: 'Email Warmup', icon: Flame, section: 'ai' },
+    { path: '/ai/competitive-intel', label: 'Competitive Intel', icon: Globe, section: 'ai' },
+    { path: '/ai/playbook', label: 'Playbook Learner', icon: BookOpen, section: 'ai' },
+    { path: '/ai/prospect-research', label: 'Prospect Research', icon: Search, section: 'ai' },
     { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles, section: 'ai' },
+    { path: '/deals', label: 'Pipeline', icon: DollarSign, section: 'main' },
+    { path: '/custom-views', label: 'Outreach Views', icon: LayoutDashboard, section: 'insights' },
     { path: '/analytics', label: 'Analytics', icon: BarChart3, section: 'insights' },
     { path: '/ab-tests', label: 'A/B Tests', icon: FlaskConical, section: 'insights' },
     { path: '/reports', label: 'Reports', icon: FileBarChart, section: 'insights' },

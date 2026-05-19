@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../config/database';
 import {
   callOpenRouter,
+  OpenRouterTimeoutError,
   generateEmailPrompt,
   generateSubjectLinesPrompt,
   analyzeEmailPrompt,
@@ -12,38 +13,83 @@ import {
   handleObjectionPrompt,
   forecastPipelinePrompt,
 } from '../services/openrouter';
+import {
+  emailGenerationLimiter,
+  leadScoringLimiter,
+  forecastingLimiter,
+} from '../middleware/rateLimiter';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
 
-// Helper to parse JSON from AI response
-const parseAIResponse = (content: string): any => {
+// Helper: wrap AI calls to handle timeouts gracefully
+const withAITimeout = async <T>(
+  fn: () => Promise<T>,
+  res: any
+): Promise<T | null> => {
   try {
-    // Try to extract JSON from the response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+    return await fn();
+  } catch (err) {
+    if (err instanceof OpenRouterTimeoutError) {
+      res.status(503).json({ success: false, error: 'AI service timeout', fallback: true });
+      return null;
     }
-    return JSON.parse(content);
-  } catch (error) {
-    console.error('Failed to parse AI response:', content);
-    throw new Error('Failed to parse AI response');
+    throw err;
   }
 };
 
-router.post('/generate-email', async (req, res) => {
+// Robust JSON parser for AI responses
+function parseAIJson(text: string): any {
+  try { return JSON.parse(text); } catch(e) {}
+  const stripped = text.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim();
+  try { return JSON.parse(stripped); } catch(e) {}
+  const start = text.indexOf('{'); const end = text.lastIndexOf('}');
+  if (start !== -1 && end !== -1) { try { return JSON.parse(text.slice(start, end + 1)); } catch(e) {} }
+  return null;
+}
+
+// Helper to parse JSON from AI response (backward compat alias)
+const parseAIResponse = (content: string): any => {
+  const result = parseAIJson(content);
+  if (!result) {
+    console.error('Failed to parse AI response:', content);
+    throw new Error('Failed to parse AI response');
+  }
+  return result;
+};
+
+// Helper: persist AI result to ai_results table
+const persistAIResult = async (teamId: string, userId: string | null, feature: string, result: any, tokensUsed: number): Promise<void> => {
+  try {
+    await pool.query(
+      `INSERT INTO ai_results (team_id, user_id, feature, result, tokens_used, model)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [teamId, userId || null, feature, JSON.stringify(result), tokensUsed, 'anthropic/claude-3-5-sonnet-20241022']
+    );
+  } catch (err) {
+    // Non-blocking — log but don't fail the request
+    console.error('Failed to persist AI result:', err);
+  }
+};
+
+router.post('/generate-email', emailGenerationLimiter, async (req, res) => {
   try {
     const { teamId, userId, type, context } = req.body;
 
     const messages = generateEmailPrompt(type, context || {});
-    const { content, tokensUsed } = await callOpenRouter(messages);
+    const result = await withAITimeout(() => callOpenRouter(messages), res);
+    if (!result) return;
+    const { content, tokensUsed } = result;
     const generated = parseAIResponse(content);
 
-    // Log the generation
+    // Log the generation (both tables)
     await pool.query(
       `INSERT INTO ai_generations (team_id, user_id, type, prompt, result, tokens_used)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [teamId, userId, 'email_generation', JSON.stringify({ type, context }), JSON.stringify(generated), tokensUsed]
     );
+    await persistAIResult(teamId, userId, 'email_generation', generated, tokensUsed);
 
     res.json({
       success: true,
@@ -62,7 +108,7 @@ router.post('/improve-email', async (req, res) => {
     const { teamId, userId, subject, body, improvements } = req.body;
 
     const messages = improveEmailPrompt(subject, body, improvements || []);
-    const { content, tokensUsed } = await callOpenRouter(messages);
+    const { content, tokensUsed } = await callOpenRouter(messages, { model: 'anthropic/claude-3-5-sonnet-20241022' });
     const improved = parseAIResponse(content);
 
     await pool.query(
@@ -70,6 +116,7 @@ router.post('/improve-email', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [teamId, userId, 'email_improvement', JSON.stringify({ subject, body, improvements }), JSON.stringify(improved), tokensUsed]
     );
+    await persistAIResult(teamId, userId, 'email_improvement', improved, tokensUsed);
 
     res.json({
       success: true,
@@ -88,7 +135,7 @@ router.post('/generate-subject-lines', async (req, res) => {
     const { teamId, userId, context, count = 5 } = req.body;
 
     const messages = generateSubjectLinesPrompt(context || {}, count);
-    const { content, tokensUsed } = await callOpenRouter(messages);
+    const { content, tokensUsed } = await callOpenRouter(messages, { model: 'anthropic/claude-3-5-sonnet-20241022' });
     const result = parseAIResponse(content);
 
     await pool.query(
@@ -96,6 +143,7 @@ router.post('/generate-subject-lines', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [teamId, userId, 'subject_lines', JSON.stringify(context), JSON.stringify(result.subjectLines), tokensUsed]
     );
+    await persistAIResult(teamId, userId, 'subject_lines', result, tokensUsed);
 
     res.json({
       success: true,
@@ -113,16 +161,16 @@ router.post('/analyze-email', async (req, res) => {
     const { teamId, userId, subject, body } = req.body;
 
     const messages = analyzeEmailPrompt(subject, body);
-    const { content, tokensUsed } = await callOpenRouter(messages);
+    const { content, tokensUsed } = await callOpenRouter(messages, { model: 'anthropic/claude-3-5-sonnet-20241022' });
     const analysis = parseAIResponse(content);
 
-    // Optionally log the analysis
-    if (teamId && userId) {
+    if (teamId) {
       await pool.query(
         `INSERT INTO ai_generations (team_id, user_id, type, prompt, result, tokens_used)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [teamId, userId, 'email_analysis', JSON.stringify({ subject, body }), JSON.stringify(analysis), tokensUsed]
+        [teamId, userId || null, 'email_analysis', JSON.stringify({ subject, body }), JSON.stringify(analysis), tokensUsed]
       );
+      await persistAIResult(teamId, userId, 'email_analysis', analysis, tokensUsed);
     }
 
     res.json({
@@ -291,7 +339,7 @@ router.get('/lead-scores/:id', async (req, res) => {
 });
 
 // Score a lead with AI
-router.post('/lead-scores/score', async (req, res) => {
+router.post('/lead-scores/score', leadScoringLimiter, async (req, res) => {
   try {
     const { teamId, contactId } = req.body;
 
@@ -328,8 +376,15 @@ router.post('/lead-scores/score', async (req, res) => {
       meetings: contact.meetings
     });
 
-    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 1500 });
+    const aiCallResult = await withAITimeout(
+      () => callOpenRouter(messages, { maxTokens: 1500, model: 'anthropic/claude-3-5-sonnet-20241022' }),
+      res
+    );
+    if (!aiCallResult) return;
+    const { content, tokensUsed } = aiCallResult;
     const aiResult = parseAIResponse(content);
+
+    await persistAIResult(teamId, null, 'lead_scoring', aiResult, tokensUsed);
 
     // Save the lead score
     const insertResult = await pool.query(
@@ -541,8 +596,10 @@ router.post('/personalizations/generate', async (req, res) => {
       industry: contact.custom_fields?.industry
     }, { original: originalContent, tone, focusArea });
 
-    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 1500 });
+    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 1500, model: 'anthropic/claude-3-5-sonnet-20241022' });
     const aiResult = parseAIResponse(content);
+
+    await persistAIResult(teamId, null, 'personalization', aiResult, tokensUsed);
 
     // Save the personalization
     const insertResult = await pool.query(
@@ -756,8 +813,10 @@ router.post('/best-times/predict', async (req, res) => {
       timezone: contact.custom_fields?.timezone || 'America/New_York'
     }, historicalData);
 
-    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 1500 });
+    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 1500, model: 'anthropic/claude-3-5-sonnet-20241022' });
     const aiResult = parseAIResponse(content);
+
+    await persistAIResult(teamId, null, 'best_time', aiResult, tokensUsed);
 
     // Save the prediction
     const insertResult = await pool.query(
@@ -930,8 +989,10 @@ router.post('/objections/handle', async (req, res) => {
       previousInteractions
     });
 
-    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 2000 });
+    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 2000, model: 'anthropic/claude-3-5-sonnet-20241022' });
     const aiResult = parseAIResponse(content);
+
+    await persistAIResult(teamId, null, 'objection_handler', aiResult, tokensUsed);
 
     // Save the objection
     const insertResult = await pool.query(
@@ -1109,7 +1170,7 @@ router.get('/forecasts/:id', async (req, res) => {
 });
 
 // Generate forecast with AI
-router.post('/forecasts/generate', async (req, res) => {
+router.post('/forecasts/generate', forecastingLimiter, async (req, res) => {
   try {
     const { teamId, forecastPeriod } = req.body;
 
@@ -1151,8 +1212,15 @@ router.post('/forecasts/generate', async (req, res) => {
 
     const messages = forecastPipelinePrompt(pipelineData, historicalData);
 
-    const { content, tokensUsed } = await callOpenRouter(messages, { maxTokens: 2000 });
+    const forecastAIResult = await withAITimeout(
+      () => callOpenRouter(messages, { maxTokens: 2000, model: 'anthropic/claude-3-5-sonnet-20241022' }),
+      res
+    );
+    if (!forecastAIResult) return;
+    const { content, tokensUsed } = forecastAIResult;
     const aiResult = parseAIResponse(content);
+
+    await persistAIResult(teamId, null, 'pipeline_forecast', aiResult, tokensUsed);
 
     // Save the forecast
     const insertResult = await pool.query(
@@ -1241,6 +1309,301 @@ router.delete('/forecasts/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting forecast:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ==================== FORECAST ACCURACY TRACKING ====================
+
+// GET /api/ai/forecasts/accuracy
+router.get('/forecasts/accuracy', async (req, res) => {
+  try {
+    const { teamId } = req.query;
+
+    const forecastResult = await pool.query(
+      `SELECT id, forecast_period, forecast_date, predicted_revenue, scenario_best, scenario_likely, scenario_worst
+       FROM ai_pipeline_forecasts
+       WHERE team_id = $1
+         AND forecast_date < CURRENT_DATE
+       ORDER BY forecast_date DESC`,
+      [teamId]
+    );
+
+    if (forecastResult.rows.length === 0) {
+      return res.json({ message: 'No past forecasts to evaluate.', forecasts: [], mape: null });
+    }
+
+    // Actual closed revenue per month
+    const actualResult = await pool.query(
+      `SELECT
+        DATE_TRUNC('month', updated_at) AS month,
+        SUM(revenue_generated) AS actual_revenue
+       FROM campaigns
+       WHERE team_id = $1 AND status = 'completed'
+       GROUP BY month
+       ORDER BY month DESC`,
+      [teamId]
+    );
+
+    const actualByMonth: Record<string, number> = {};
+    for (const row of actualResult.rows) {
+      const key = new Date(row.month).toISOString().substring(0, 7);
+      actualByMonth[key] = parseFloat(row.actual_revenue) || 0;
+    }
+
+    const forecastsWithAccuracy = forecastResult.rows.map(f => {
+      const forecastMonthKey = new Date(f.forecast_date).toISOString().substring(0, 7);
+      const actual = actualByMonth[forecastMonthKey] ?? null;
+      const predicted = parseFloat(f.predicted_revenue) || 0;
+      let ape: number | null = null;
+      if (actual !== null && actual > 0) {
+        ape = Math.abs((predicted - actual) / actual) * 100;
+      }
+      return {
+        id: f.id,
+        forecastPeriod: f.forecast_period,
+        forecastDate: f.forecast_date,
+        predictedRevenue: predicted,
+        actualRevenue: actual,
+        absolutePercentageError: ape !== null ? parseFloat(ape.toFixed(2)) : null,
+        accurate: ape !== null ? ape < 20 : null,
+      };
+    });
+
+    const withActuals = forecastsWithAccuracy.filter(f => f.absolutePercentageError !== null);
+    const mape = withActuals.length > 0
+      ? parseFloat((withActuals.reduce((sum, f) => sum + f.absolutePercentageError!, 0) / withActuals.length).toFixed(2))
+      : null;
+
+    res.json({
+      mape,
+      mapeInterpretation: mape === null ? null : mape < 10 ? 'Excellent' : mape < 20 ? 'Good' : mape < 50 ? 'Fair' : 'Poor',
+      totalForecasts: forecastResult.rows.length,
+      forecastsWithActuals: withActuals.length,
+      forecasts: forecastsWithAccuracy,
+    });
+  } catch (error) {
+    console.error('Error computing forecast accuracy:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Pass 5: PRODUCT-DECISION + NEEDS-CREDS endpoints ────────────────────────
+
+// PRODUCT-DECISION: NEEDS-CREDS gate factory. Documented env vars (must be set
+// to non-placeholder values to enable):
+//   SALESFORCE_API_KEY    — Salesforce Einstein/CRM sync
+//   LINKEDIN_API_KEY      — LinkedIn Sales Navigator
+//   ZOOMINFO_API_KEY      — ZoomInfo enrichment
+//   ROCKETREACH_API_KEY   — RocketReach enrichment
+function requireEnv(envName: string) {
+  return function (req: any, res: any, next: any) {
+    const v = process.env[envName];
+    if (!v || /your[-_]?\w*[-_]?key/i.test(v)) {
+      return res.status(503).json({ success: false, error: `Service not configured. ${envName} missing.`, missing: envName });
+    }
+    next();
+  };
+}
+
+// PRODUCT-DECISION: loss-reason taxonomy fixed list — chosen per common B2B SaaS
+// CRM conventions. Stored in DB (CREATE TABLE IF NOT EXISTS) on first use.
+const LOSS_REASON_TAXONOMY = [
+  'price', 'product_fit', 'competitor', 'timing', 'no_decision',
+  'budget', 'authority', 'integration', 'support_concerns', 'champion_left',
+] as const;
+
+// POST /api/ai/win-loss-analysis — analyze closed-lost deals to surface patterns.
+router.post('/win-loss-analysis', async (req, res) => {
+  try {
+    // Lazy-create table; additive only.
+    await pool.query(`CREATE TABLE IF NOT EXISTS win_loss_analyses (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT,
+      reason VARCHAR(50),
+      details JSONB,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+    let recentLosses: any[] = [];
+    try {
+      const r = await pool.query("SELECT id, name, value, lost_reason, lost_to_competitor, closed_at FROM deals WHERE stage = 'closed_lost' ORDER BY closed_at DESC NULLS LAST LIMIT 50");
+      recentLosses = r.rows;
+    } catch (e) {
+      // schema variance — keep empty
+    }
+    const aiResult = await withAITimeout(async () => {
+      const messages = [
+        { role: 'system' as const, content: `You are a sales loss analyst. Categorize each lost deal into ONE of these reasons: ${LOSS_REASON_TAXONOMY.join(', ')}. Return ONLY JSON: { "by_reason": [{ "reason": string, "count": number, "examples": [string], "patterns": [string] }], "top_patterns": [string], "recommendations": [string] }` },
+        { role: 'user' as const, content: `Closed-lost deals: ${JSON.stringify(recentLosses)}\n\nTaxonomy (use only these): ${JSON.stringify(LOSS_REASON_TAXONOMY)}` },
+      ];
+      const { content } = await callOpenRouter(messages, { temperature: 0.4, maxTokens: 1500 });
+      return parseAIJson(content) || { raw: content };
+    }, res);
+    if (!aiResult) return; // 503 already sent
+    try {
+      await pool.query('INSERT INTO win_loss_analyses (user_id, reason, details) VALUES ($1, $2, $3)', [(req as any).user?.userId || null, 'aggregate', JSON.stringify(aiResult)]);
+    } catch (e) {}
+    res.json({ success: true, taxonomy: LOSS_REASON_TAXONOMY, sample_size: recentLosses.length, analysis: aiResult });
+  } catch (err: any) {
+    console.error('win-loss error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to analyze losses' });
+  }
+});
+
+// POST /api/ai/asset-library — list/upload sales assets.
+// PRODUCT-DECISION: in-DB metadata only (no S3); CREATE TABLE IF NOT EXISTS.
+router.post('/asset-library', async (req, res) => {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS sales_assets (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT,
+      title VARCHAR(255) NOT NULL,
+      kind VARCHAR(50),
+      url TEXT,
+      tags TEXT[],
+      description TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+    const { title, kind, url, tags, description } = req.body || {};
+    if (!title) return res.status(400).json({ success: false, error: 'title is required' });
+    // PRODUCT-DECISION: kind enum: video|brochure|case_study|deck|onepager|other
+    const allowedKinds = ['video', 'brochure', 'case_study', 'deck', 'onepager', 'other'];
+    const k = allowedKinds.includes(kind) ? kind : 'other';
+    const r = await pool.query(
+      'INSERT INTO sales_assets (user_id, title, kind, url, tags, description) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [(req as any).user?.userId || null, title, k, url || null, Array.isArray(tags) ? tags : [], description || null]
+    );
+    res.status(201).json({ success: true, asset: r.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/asset-library', async (req, res) => {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS sales_assets (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT,
+      title VARCHAR(255) NOT NULL,
+      kind VARCHAR(50),
+      url TEXT,
+      tags TEXT[],
+      description TEXT,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`);
+    const r = await pool.query('SELECT * FROM sales_assets ORDER BY created_at DESC LIMIT 100');
+    res.json({ success: true, assets: r.rows });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/ai/approval-request — workflow approval gate (compliance review).
+// PRODUCT-DECISION: 4-state machine: pending → approved | rejected | changes_requested.
+// Reviewer is the user supplied in body; in-DB only.
+router.post('/approval-request', async (req, res) => {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS approval_requests (
+      id SERIAL PRIMARY KEY,
+      submitter_id TEXT,
+      reviewer_id TEXT,
+      artifact_kind VARCHAR(50),
+      artifact_id INTEGER,
+      payload JSONB,
+      state VARCHAR(20) DEFAULT 'pending',
+      reviewer_notes TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`);
+    const { artifactKind, artifactId, payload, reviewerId } = req.body || {};
+    if (!artifactKind) return res.status(400).json({ success: false, error: 'artifactKind is required' });
+    const r = await pool.query(
+      'INSERT INTO approval_requests (submitter_id, reviewer_id, artifact_kind, artifact_id, payload) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [(req as any).user?.userId || null, reviewerId || null, artifactKind, artifactId || null, JSON.stringify(payload || {})]
+    );
+    res.status(201).json({ success: true, request: r.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.post('/approval-request/:id/decide', async (req, res) => {
+  try {
+    const { decision, notes } = req.body || {};
+    if (!['approved', 'rejected', 'changes_requested'].includes(decision)) {
+      return res.status(400).json({ success: false, error: 'decision must be one of: approved, rejected, changes_requested' });
+    }
+    const r = await pool.query(
+      "UPDATE approval_requests SET state = $1, reviewer_notes = $2, updated_at = NOW() WHERE id = $3 RETURNING *",
+      [decision, notes || null, req.params.id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ success: false, error: 'Approval request not found' });
+    res.json({ success: true, request: r.rows[0] });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/ai/enrich-contact — contact enrichment via ZoomInfo (or stub).
+// NEEDS-CREDS: ZOOMINFO_API_KEY.
+router.post('/enrich-contact', requireEnv('ZOOMINFO_API_KEY'), async (req, res) => {
+  try {
+    const { email, contactId } = req.body || {};
+    if (!email && !contactId) return res.status(400).json({ success: false, error: 'email or contactId is required' });
+    // PRODUCT-DECISION: stub enrichment fields — real call would hit ZoomInfo API.
+    res.json({
+      success: true,
+      enriched: {
+        email,
+        contactId: contactId || null,
+        title: null, company: null, linkedin: null,
+        seniority: null, department: null, technologies: [],
+        last_funding: null,
+        source: 'zoominfo',
+        note: 'Stub response — wire to ZoomInfo Person/Company endpoint.',
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/ai/salesforce-sync — push opportunities to Salesforce.
+// NEEDS-CREDS: SALESFORCE_API_KEY.
+router.post('/salesforce-sync', requireEnv('SALESFORCE_API_KEY'), async (req, res) => {
+  try {
+    const { dealId } = req.body || {};
+    if (!dealId) return res.status(400).json({ success: false, error: 'dealId is required' });
+    res.json({
+      success: true,
+      sync: {
+        dealId,
+        salesforce_opportunity_id: 'SF-' + Date.now().toString(36).toUpperCase(),
+        synced_at: new Date(),
+        note: 'Stub response — wire to Salesforce REST API.',
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/ai/linkedin-prospect — pull prospect via LinkedIn Sales Navigator.
+// NEEDS-CREDS: LINKEDIN_API_KEY.
+router.post('/linkedin-prospect', requireEnv('LINKEDIN_API_KEY'), async (req, res) => {
+  try {
+    const { profileUrl } = req.body || {};
+    if (!profileUrl) return res.status(400).json({ success: false, error: 'profileUrl is required' });
+    res.json({
+      success: true,
+      prospect: {
+        profileUrl,
+        name: null, title: null, company: null, summary: null,
+        recent_activity: [],
+        note: 'Stub response — wire to LinkedIn Sales Navigator API.',
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

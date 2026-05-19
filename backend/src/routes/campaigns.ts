@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { pool } from '../config/database';
 
+import { authenticate } from '../middleware/auth';
+
 const router = Router();
+router.use(authenticate);
 
 // Allowed sort columns for campaigns
 const CAMPAIGN_SORT_COLUMNS: Record<string, string> = {
