@@ -101,6 +101,10 @@ app.use('/api/deals', dealsRoutes);
 app.use('/api/ai/classify-reply', replyClassifierRoutes);
 app.use('/api/analytics/leaderboard', leaderboardRoutes);
 
+// Custom Views (Outreach Pipeline / Templates / Bulk Scheduler)
+import customViewsRouter from './routes/customViews';
+app.use('/api/custom-views', customViewsRouter);
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

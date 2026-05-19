@@ -47,6 +47,7 @@ import AIProspectResearch from './pages/AIProspectResearch';
 import AIDealMomentum from './pages/AIDealMomentum';
 import AIObjectionPredictor from './pages/AIObjectionPredictor';
 import Deals from './pages/Deals';
+import CustomViewsPage from './pages/CustomViewsPage';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -122,6 +123,7 @@ const AppRoutes: React.FC = () => {
                 <Route path="/ai/deal-momentum" element={<AIDealMomentum />} />
                 <Route path="/ai/objection-predictor" element={<AIObjectionPredictor />} />
                 <Route path="/deals" element={<Deals />} />
+                <Route path="/custom-views" element={<CustomViewsPage />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

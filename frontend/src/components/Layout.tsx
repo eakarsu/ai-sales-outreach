@@ -61,6 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { path: '/ai/prospect-research', label: 'Prospect Research', icon: Search, section: 'ai' },
     { path: '/ai-assistant', label: 'AI Assistant', icon: Sparkles, section: 'ai' },
     { path: '/deals', label: 'Pipeline', icon: DollarSign, section: 'main' },
+    { path: '/custom-views', label: 'Outreach Views', icon: LayoutDashboard, section: 'insights' },
     { path: '/analytics', label: 'Analytics', icon: BarChart3, section: 'insights' },
     { path: '/ab-tests', label: 'A/B Tests', icon: FlaskConical, section: 'insights' },
     { path: '/reports', label: 'Reports', icon: FileBarChart, section: 'insights' },
