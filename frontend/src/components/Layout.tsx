@@ -54,6 +54,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { path: '/ai/personalizations', label: 'Personalization', icon: Wand2, section: 'ai' },
     { path: '/ai/best-times', label: 'Best Time', icon: Clock, section: 'ai' },
     { path: '/ai/objections', label: 'Objection Handler', icon: MessageCircle, section: 'ai' },
+    { path: '/ai/reply-triage', label: 'Reply Triage', icon: MessageCircle, section: 'ai' },
     { path: '/ai/forecasts', label: 'Pipeline Forecast', icon: TrendingUp, section: 'ai' },
     { path: '/ai/warmup', label: 'Email Warmup', icon: Flame, section: 'ai' },
     { path: '/ai/competitive-intel', label: 'Competitive Intel', icon: Globe, section: 'ai' },

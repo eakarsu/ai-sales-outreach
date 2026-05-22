@@ -1,0 +1,109 @@
+// v0 scaffold for: Voice-call coaching with post-call summary on tone, pacing, and close rate
+// Pass 7 backlog: wires frontend GapVoiceCallCoachingPostCall to a backend route.
+import { Router, Request, Response } from 'express';
+
+const FEATURE_TITLE: string = 'Voice-call coaching with post-call summary on tone, pacing, and close rate';
+const FEATURE_SLUG: string = 'cf-voice-call-coaching-post-call';
+
+let authMw: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const m = require('../middleware/auth');
+  authMw = typeof m === 'function' ? m : (m.authenticateToken || m.default || null);
+} catch (e) {
+  authMw = null;
+}
+
+let db: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  db = require('../config/database');
+} catch (e) {
+  db = null;
+}
+
+const router = Router();
+if (authMw) router.use(authMw);
+
+async function ensureTable() {
+  if (!db) return;
+  try {
+    const sql = `CREATE TABLE IF NOT EXISTS cf_features (
+      id SERIAL PRIMARY KEY,
+      project TEXT,
+      slug TEXT,
+      input JSONB,
+      output JSONB,
+      created_at TIMESTAMP DEFAULT NOW()
+    )`;
+    if (typeof db.query === 'function') {
+      await db.query(sql);
+    }
+  } catch (err) { /* best effort */ }
+}
+
+async function persist(input: any, output: any) {
+  if (!db) return;
+  try {
+    await ensureTable();
+    if (typeof db.query === 'function') {
+      await db.query(
+        'INSERT INTO cf_features(project, slug, input, output) VALUES ($1, $2, $3, $4)',
+        ['ai-sales-outreach', FEATURE_SLUG, JSON.stringify(input), JSON.stringify(output)]
+      );
+    }
+  } catch (err) { /* ignore */ }
+}
+
+async function callOpenRouter(prompt: string) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    return { stub: true, note: 'OPENROUTER_API_KEY not set. v0 stub response.' };
+  }
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
+        messages: [
+          { role: 'system', content: `You are an assistant for the feature: ${FEATURE_TITLE}.` },
+          { role: 'user', content: prompt },
+        ],
+      }),
+    });
+    if (!res.ok) return { error: `OpenRouter HTTP ${res.status}` };
+    const json: any = await res.json();
+    return { choices: json?.choices, model: json?.model };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+router.get('/health', (_req: Request, res: Response) => {
+  res.json({ feature: FEATURE_SLUG, status: 'ok', version: 'v0', kind: 'cf' });
+});
+
+router.post('/run', async (req: Request, res: Response) => {
+  try {
+    const input = req.body || {};
+    const prompt = typeof input.input === 'string' ? input.input : JSON.stringify(input);
+    const aiResult = await callOpenRouter(prompt);
+    const output = {
+      feature: FEATURE_SLUG,
+      title: FEATURE_TITLE,
+      receivedKeys: Object.keys(input),
+      ai: aiResult,
+    };
+    persist(input, output).catch(() => {});
+    res.json({ success: true, result: output });
+  } catch (err: any) {
+    console.error(`[${FEATURE_SLUG}] error`, err);
+    res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
+export default router;

@@ -37,6 +37,27 @@ None. Project is substantive (39 AI endpoints, 26 routes). Remaining items are e
 | Battlecard auto-generation | NEEDS-CREDS | Competitor scraping |
 | Salesforce / LinkedIn / ZoomInfo integrations | NEEDS-CREDS | OAuth + creds |
 
+## Apply pass 7 (full backlog implementation)
+
+**Critical fix:** the 404 handler in `backend/src/index.ts` was registered on line 114, BEFORE the 9 `gap_*` route mounts (lines 142-165) and the 5 `BATCH_00_AUDIT_MOUNTS` (`meeting-transcript`, `battlecards`, `voice-coaching`, `methodology-playbook`, `enrichment-bridge`). Express middleware runs in registration order, so every request to those 14 routers fell through to `notFoundHandler` and returned 404 — making all earlier "Implemented" gap work effectively dead code. Moved `notFoundHandler` + `globalErrorHandler` + `start()` to the END of the file, after all `app.use(...)` mounts.
+
+**Backend — 5 new custom-feature routes** matching frontend `/api/cf-*/run` fetches that previously had no backend (now 14 frontend Gap pages all reach a live backend):
+- `POST /api/cf-auto-generated-competitor-battlecards-web/run` + `GET /health` — file `routes/cf_auto_generated_competitor_battlecards_web.ts`
+- `POST /api/cf-deeper-enrichment-salesforce-einstein-linkedin/run` + `GET /health`
+- `POST /api/cf-real-time-meeting-transcript-analysis/run` + `GET /health`
+- `POST /api/cf-sales-methodology-playbooks-meddic-sandler/run` + `GET /health`
+- `POST /api/cf-voice-call-coaching-post-call/run` + `GET /health`
+
+All 5 follow the existing `gap_*` pattern: optional JWT middleware, OpenRouter call with stub fallback, lazy `cf_features` table via `CREATE TABLE IF NOT EXISTS cf_features (id SERIAL PRIMARY KEY, project TEXT, slug TEXT, input JSONB, output JSONB, created_at TIMESTAMP DEFAULT NOW())`. Mounted in `index.ts` BEFORE the 404 handler.
+
+**Frontend — wired all 14 Gap pages** in `frontend/src/App.tsx`. They existed in `pages/` but were not imported or routed, so the UI was unreachable. Added imports + `<Route path="/gap/...">` entries (e.g. `/gap/ai-account-tier-scoring-icp`, `/gap/voice-call-coaching-post-call`, etc.).
+
+**New table:** `cf_features` (created lazily on first `/run` call, same schema as `gap_features`).
+
+**Syntax:** `npx tsc --noEmit` clean for both `backend/` and `frontend/`. No `.js` files modified (project is TypeScript). No new deps. No breaking changes.
+
+Status: Backlog fully addressed for items not gated by external credentials. Remaining items in original audit explicitly skipped per constraint: real-time streaming transcription (TOO-RISKY) and OAuth-gated Salesforce/LinkedIn/ZoomInfo data pulls (NEEDS-CREDS — covered by pass-5 503 stubs).
+
 ## Apply pass 5 (all backlog)
 
 Implemented 7 endpoints in `backend/src/routes/ai.ts`:

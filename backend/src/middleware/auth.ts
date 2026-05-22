@@ -45,6 +45,9 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
   }
 };
 
+// Alias for legacy route files
+export const authenticateToken = authenticate;
+
 export const authorize = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
