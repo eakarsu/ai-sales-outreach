@@ -2,14 +2,28 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { pool } from '../config/database';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-
 export interface AuthRequest extends Request {
   user?: {
     userId: string;
     email: string;
     role: string;
+    tenantId: string;
+    subjects: string[];
   };
+}
+
+type Claims = { userId: string; email: string; role: string; tenantId: string; subjects: string[] };
+
+function jwtSecret() {
+  const value = process.env.JWT_SECRET || '';
+  if (value.length < 32) throw new Error('JWT_SECRET must contain at least 32 characters');
+  return value;
+}
+
+function validClaims(value: Partial<Claims>): value is Claims {
+  return typeof value.userId === 'string' && typeof value.email === 'string'
+    && typeof value.role === 'string' && typeof value.tenantId === 'string'
+    && Array.isArray(value.subjects) && value.subjects.every((subject) => typeof subject === 'string');
 }
 
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -33,11 +47,18 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       return res.status(401).json({ error: 'Token has been revoked' });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] }) as Partial<Claims>;
+    if (!validClaims(decoded)) return res.status(403).json({ error: 'Signed tenant, role, and subject claims required' });
+    const current = await pool.query('SELECT role FROM users WHERE id=$1', [decoded.userId]);
+    if (!current.rowCount || current.rows[0].role !== decoded.role) {
+      return res.status(403).json({ error: 'Signed role is stale' });
+    }
     req.user = {
       userId: decoded.userId,
       email: decoded.email,
       role: decoded.role,
+      tenantId: decoded.tenantId,
+      subjects: decoded.subjects,
     };
     next();
   } catch (error) {

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "node --test ../governance/*.test.cjs",
+    "check": "npm run build && npm test",
     "start": "node dist/index.js",
     "seed": "tsx src/seed.ts"
   },

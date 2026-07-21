@@ -65,7 +65,7 @@ router.post('/configure', async (req, res) => {
     ).catch(() => null);
 
     if (!result) {
-      return res.json({ success: true, simulated: true, message: 'Webhook configured (table not yet migrated)', url, events });
+      return res.status(503).json({ error: 'Webhook persistence is not migrated; configuration was not accepted' });
     }
 
     res.json({ success: true, webhook: result.rows[0] });

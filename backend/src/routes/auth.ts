@@ -6,7 +6,23 @@ import { v4 as uuidv4 } from 'uuid';
 import { validateLogin, validateRegister, validateChangePassword, validatePasswordStrength } from '../middleware/validate';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+function jwtSecret() {
+  const value = process.env.JWT_SECRET || '';
+  if (value.length < 32) throw new Error('JWT_SECRET must contain at least 32 characters');
+  return value;
+}
+
+function tokenClaims(user: { id: string; email: string; role: string }) {
+  const tenantId = process.env.DEFAULT_TENANT_ID || '';
+  if (tenantId.length < 8) throw new Error('DEFAULT_TENANT_ID is required');
+  return {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+    tenantId,
+    subjects: ['admin', 'manager'].includes(user.role) ? ['*'] : [user.id],
+  };
+}
 
 // Login
 router.post('/login', validateLogin, async (req: Request, res: Response) => {
@@ -30,9 +46,9 @@ router.post('/login', validateLogin, async (req: Request, res: Response) => {
     }
 
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
+      tokenClaims(user),
+      jwtSecret(),
+      { expiresIn: '15m', algorithm: 'HS256' }
     );
 
     // Get user's team
@@ -97,9 +113,9 @@ router.post('/register', validateRegister, async (req: Request, res: Response) =
 
     const user = result.rows[0];
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '24h' }
+      tokenClaims(user),
+      jwtSecret(),
+      { expiresIn: '15m', algorithm: 'HS256' }
     );
 
     // Create email verification token
@@ -120,7 +136,7 @@ router.post('/register', validateRegister, async (req: Request, res: Response) =
         role: user.role,
         emailVerified: false,
       },
-      verificationToken,
+      verificationRequired: true,
     });
   } catch (error) {
     console.error('Register error:', error);
@@ -147,7 +163,7 @@ router.get('/me', async (req, res) => {
       return res.status(401).json({ error: 'Token has been revoked' });
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] }) as any;
 
     const result = await pool.query(
       'SELECT id, email, first_name, last_name, role, avatar_url, email_verified FROM users WHERE id = $1',
@@ -198,7 +214,7 @@ router.post('/logout', async (req, res) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] }) as any;
 
     await pool.query(
       `INSERT INTO token_blacklist (token, user_id, expires_at)
@@ -223,7 +239,7 @@ router.post('/change-password', validateChangePassword, async (req: Request, res
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, jwtSecret(), { algorithms: ['HS256'] }) as any;
 
     const { currentPassword, newPassword } = req.body;
 
@@ -355,13 +371,16 @@ router.post('/verify-email', async (req, res) => {
 // Resend verification email
 router.post('/resend-verification', async (req, res) => {
   try {
+    if (process.env.EMAIL_PROVIDER_ENABLED !== 'true') {
+      return res.status(503).json({ error: 'Email verification provider is not configured' });
+    }
     const authHeader = req.headers.authorization;
     if (!authHeader) {
       return res.status(401).json({ error: 'No token provided' });
     }
 
     const jwtToken = authHeader.split(' ')[1];
-    const decoded = jwt.verify(jwtToken, JWT_SECRET) as any;
+    const decoded = jwt.verify(jwtToken, jwtSecret(), { algorithms: ['HS256'] }) as any;
 
     const verificationToken = uuidv4();
     await pool.query(
@@ -370,9 +389,8 @@ router.post('/resend-verification', async (req, res) => {
       [decoded.userId, verificationToken]
     );
 
-    res.json({
-      message: 'Verification email sent',
-      verificationToken, // Only for demo
+    res.status(501).json({
+      error: 'Verification provider handoff is not implemented; token retained for an approved worker',
     });
   } catch (error) {
     console.error('Resend verification error:', error);

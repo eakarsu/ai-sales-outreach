@@ -1,20 +1,30 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'node:fs';
 
 // Load .env from project root
 dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') });
 
+const databaseUrl = process.env.DATABASE_URL || '';
+if (!/^postgres(ql)?:\/\//.test(databaseUrl)) {
+  throw new Error('DATABASE_URL must be an explicit PostgreSQL connection string');
+}
+const parsed = new URL(databaseUrl);
+const remoteProduction = process.env.NODE_ENV === 'production'
+  && !['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+const caPath = process.env.PGSSLROOTCERT || '';
+if (remoteProduction && !caPath) throw new Error('PGSSLROOTCERT is required for remote production PostgreSQL');
+
 export const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'ai_sales_outreach',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
+  connectionString: databaseUrl,
+  ssl: caPath ? { rejectUnauthorized: true, ca: fs.readFileSync(caPath, 'utf8') } : undefined,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
+
+export const closePool = () => pool.end();
 
 export const initDatabase = async () => {
   const client = await pool.connect();
