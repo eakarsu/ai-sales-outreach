@@ -32,6 +32,7 @@ import trackingRoutes from './routes/tracking';
 import webhooksRoutes from './routes/webhooks';
 import momentumRoutes from './routes/momentum';
 import governedOutreachRoutes from './routes/governedOutreach';
+import applicationAiRoutes from './routes/applicationAi';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -96,6 +97,7 @@ app.use('/api/track', trackingRoutes);
 app.use('/api/webhooks', webhooksRoutes);
 app.use('/api/contacts', momentumRoutes);
 app.use('/api/governed-outreach', generalLimiter, governedOutreachRoutes);
+app.use('/api/application-ai', applicationAiRoutes);
 app.use('/api/ai/warmup', warmupRoutes);
 app.use('/api/ai/competitive-intel', competitiveIntelRoutes);
 app.use('/api/ai/playbook', playbookRoutes);

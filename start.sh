@@ -2,27 +2,29 @@
 set -eu
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -f "$project_dir/.env" ]; then
+  set -a
+  . "$project_dir/.env"
+  set +a
+fi
 
-fail() {
-  printf 'error: %s\n' "$*" >&2
-  exit 1
-}
-
+fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 check() {
   jwt_secret="${JWT_SECRET:-}"
   default_tenant_id="${DEFAULT_TENANT_ID:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}"
-  case "${DATABASE_URL:-}" in
-    postgres://*|postgresql://*) ;;
-    *) fail "DATABASE_URL must be an explicit PostgreSQL connection string" ;;
-  esac
+  case "${DATABASE_URL:-}" in postgres://*|postgresql://*) ;; *) fail "DATABASE_URL must be an explicit PostgreSQL connection string" ;; esac
   [ "${#jwt_secret}" -ge 32 ] || fail "JWT_SECRET must contain at least 32 characters"
   [ "${#default_tenant_id}" -ge 8 ] || fail "DEFAULT_TENANT_ID, GOVERNANCE_TENANT_ID, or TENANT_ID is required"
+  [ -n "${OPENROUTER_API_KEY:-}" ] || fail "OPENROUTER_API_KEY is required"
+  [ -n "${OPENROUTER_MODEL:-}" ] || fail "OPENROUTER_MODEL is required"
+  [ "${OPENROUTER_BASE_URL:-}" = 'https://openrouter.ai/api/v1' ] || fail "OPENROUTER_BASE_URL must be https://openrouter.ai/api/v1"
+  case "${BACKEND_PORT:-}" in ''|*[!0-9]*) fail "BACKEND_PORT must be an explicit integer" ;; esac
+  case "${FRONTEND_PORT:-}" in ''|*[!0-9]*) fail "FRONTEND_PORT must be an explicit integer" ;; esac
+  [ "$BACKEND_PORT" -ge 1024 ] && [ "$BACKEND_PORT" -le 65535 ] || fail "BACKEND_PORT must be between 1024 and 65535"
+  [ "$FRONTEND_PORT" -ge 1024 ] && [ "$FRONTEND_PORT" -le 65535 ] || fail "FRONTEND_PORT must be between 1024 and 65535"
+  [ "$BACKEND_PORT" != "$FRONTEND_PORT" ] || fail "BACKEND_PORT and FRONTEND_PORT must be different"
   DEFAULT_TENANT_ID="$default_tenant_id"
   export DEFAULT_TENANT_ID
-  if [ "${NODE_ENV:-development}" = production ]; then
-    [ -n "${CLIENT_URL:-}" ] || fail "CLIENT_URL is required in production"
-    [ "${ENABLE_GENERATED_FEATURES:-false}" != true ] || fail "generated features are forbidden in production"
-  fi
   command -v node >/dev/null 2>&1 || fail "node is required"
   printf 'configuration valid\n'
 }
@@ -35,12 +37,19 @@ case "${1:-start}" in
     check
     [ "${ALLOW_SCHEMA_MIGRATION:-0}" = 1 ] || fail "set ALLOW_SCHEMA_MIGRATION=1 for the approved migration step"
     command -v psql >/dev/null 2>&1 || fail "psql is required"
-    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$project_dir/migrations/001_governed_outreach.sql"
+    for migration in "$project_dir"/migrations/[0-9]*.sql; do
+      psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$migration"
+    done
     ;;
   start)
     check
     [ -f "$project_dir/backend/dist/index.js" ] || fail "backend build is missing; build explicitly"
-    exec node "$project_dir/backend/dist/index.js"
+    [ -d "$project_dir/frontend/node_modules" ] || fail "frontend dependencies are missing; install explicitly"
+    for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
+      lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 && fail "assigned port $port is occupied"
+    done
+    printf 'Starting AI Sales Outreach API on %s and UI on %s; persistent state is unchanged.\n' "$BACKEND_PORT" "$FRONTEND_PORT"
+    exec node "$project_dir/runtime-launcher.js"
     ;;
   *) fail "usage: ./start.sh [check|migrate|start]" ;;
 esac

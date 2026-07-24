@@ -9,6 +9,7 @@
     "test": "node --test ../governance/*.test.cjs",
     "check": "npm run build && npm test",
     "start": "node dist/index.js",
+    "create-admin": "tsx src/scripts/createRuntimeAdmin.ts",
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {
