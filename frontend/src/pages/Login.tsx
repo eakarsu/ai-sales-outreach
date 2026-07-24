@@ -13,8 +13,8 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
 
   const handleAutoPopulate = () => {
-    setEmail('john.smith@company.com');
-    setPassword('password123');
+    setEmail(process.env.REACT_APP_DEMO_EMAIL || '');
+    setPassword(process.env.REACT_APP_DEMO_PASSWORD || '');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

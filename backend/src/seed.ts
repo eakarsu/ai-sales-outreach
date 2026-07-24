@@ -2,6 +2,12 @@ import { pool, initDatabase } from './config/database';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 
+function requireDemoPassword() {
+  const password = process.env.DEMO_PASSWORD || process.env.SEED_DEMO_PASSWORD || process.env.DEMO_SEED_PASSWORD || '';
+  if (password.length < 12 || password.length > 1024) throw new Error('DEMO_PASSWORD must contain 12-1024 characters');
+  return password;
+}
+
 const seed = async () => {
   console.log('Starting database seed...');
 
@@ -49,7 +55,7 @@ const seed = async () => {
       { id: uuidv4(), email: 'nicole.lewis@company.com', firstName: 'Nicole', lastName: 'Lewis', role: 'user' },
     ];
 
-    const passwordHash = await bcrypt.hash('password123', 10);
+    const passwordHash = await bcrypt.hash(requireDemoPassword(), 10);
 
     for (const user of users) {
       await client.query(
@@ -865,7 +871,7 @@ const seed = async () => {
     console.log('Created 15 token blacklist entries');
 
     console.log('\nSeed completed successfully!');
-    console.log('Login credentials: any seeded email with password "password123"');
+    console.log('Demo login users provisioned from the local environment.');
 
   } finally {
     client.release();
