@@ -102,6 +102,9 @@ case "${1:-start}" in
     for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
       lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 && fail "assigned port $port is occupied"
     done
+    if [ "${NODE_ENV:-development}" != production ] && [ "${ENABLE_DEMO_CREDENTIAL_AUTOFILL:-true}" = true ]; then
+      BOOTSTRAP_ACKNOWLEDGEMENT=create-initial-admin npm --prefix "$project_dir/backend" run create-admin
+    fi
     printf 'Starting AI Sales Outreach API on %s and UI on %s; persistent state is unchanged.\n' "$BACKEND_PORT" "$FRONTEND_PORT"
     exec node "$project_dir/runtime-launcher.js"
     ;;
