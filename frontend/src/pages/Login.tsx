@@ -72,7 +72,7 @@ const Login: React.FC = () => {
               alignItems: 'center', justifyContent: 'center', gap: '8px',
               background: '#f0fdf4', border: '2px solid #22c55e', color: '#16a34a', fontWeight: '600'
             }}>
-            <UserCheck size={18} /> Auto-Fill Demo Credentials
+            <UserCheck size={18} /> Auto Fill Demo Credentials
           </button>
 
           <div className="form-group">
