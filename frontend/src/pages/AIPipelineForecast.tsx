@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -27,6 +29,8 @@ interface Forecast {
 }
 
 const AIPipelineForecast: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const navigate = useNavigate();
   const { team } = useAuth();
   const [forecasts, setForecasts] = useState<Forecast[]>([]);
@@ -237,14 +241,14 @@ const AIPipelineForecast: React.FC = () => {
       {/* Generate Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }} data-full-ai-workspace="AIPipelineForecast"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading || generating)} />
             <h2 style={{ marginBottom: '20px' }}>Generate AI Forecast</h2>
             <div className="form-group">
               <label className="form-label">Forecast Period</label>
               <select
                 className="form-input"
                 value={forecastPeriod}
-                onChange={(e) => setForecastPeriod(e.target.value)}
+                onChange={(e) => setForecastPeriod(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: forecastPeriod, change: (e) => setForecastPeriod(e.target.value), label: "forecastPeriod", manual: false, json: false, sample: 'Next Quarter' }, "p1-10041", undefined)}
               >
                 <option value="Next 30 Days">Next 30 Days</option>
                 <option value="Next 60 Days">Next 60 Days</option>

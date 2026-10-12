@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -26,6 +28,8 @@ interface Personalization {
 }
 
 const AIPersonalization: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const navigate = useNavigate();
   const { team } = useAuth();
   const { showToast } = useToast();
@@ -258,7 +262,7 @@ const AIPersonalization: React.FC = () => {
       {/* Generate Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }} data-full-ai-workspace="AIPersonalization"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading || generating)} />
             <h2 style={{ marginBottom: '20px' }}>Generate AI Personalization</h2>
 
             <div className="form-group">
@@ -266,7 +270,7 @@ const AIPersonalization: React.FC = () => {
               <select
                 className="form-input"
                 value={formData.contactId}
-                onChange={(e) => setFormData({ ...formData, contactId: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, contactId: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: formData.contactId, change: (e) => setFormData({ ...formData, contactId: e.target.value }), label: "formData.contactId", manual: false, json: false, sample: '' }, "p1-11154", undefined)}
               >
                 <option value="">Choose a contact...</option>
                 {contacts.map(c => (
@@ -282,7 +286,7 @@ const AIPersonalization: React.FC = () => {
                 rows={4}
                 value={formData.originalContent}
                 onChange={(e) => setFormData({ ...formData, originalContent: e.target.value })}
-                placeholder="Enter the content you want to personalize..."
+                placeholder="Enter the content you want to personalize..." data-full-ai-field={fullAIExamples.bind({ current: formData.originalContent, change: (e) => setFormData({ ...formData, originalContent: e.target.value }), label: "formData.originalContent", manual: false, json: false, sample: '' }, "p1-11737", undefined)}
               />
             </div>
 
@@ -292,7 +296,7 @@ const AIPersonalization: React.FC = () => {
                 <select
                   className="form-input"
                   value={formData.tone}
-                  onChange={(e) => setFormData({ ...formData, tone: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, tone: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: formData.tone, change: (e) => setFormData({ ...formData, tone: e.target.value }), label: "formData.tone", manual: false, json: false, sample: 'professional' }, "p1-12277", undefined)}
                 >
                   <option value="professional">Professional</option>
                   <option value="casual">Casual</option>
@@ -306,7 +310,7 @@ const AIPersonalization: React.FC = () => {
                 <select
                   className="form-input"
                   value={formData.personalizationType}
-                  onChange={(e) => setFormData({ ...formData, personalizationType: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, personalizationType: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: formData.personalizationType, change: (e) => setFormData({ ...formData, personalizationType: e.target.value }), label: "formData.personalizationType", manual: false, json: false, sample: 'email' }, "p1-12957", undefined)}
                 >
                   <option value="email">Email</option>
                   <option value="linkedin">LinkedIn Message</option>

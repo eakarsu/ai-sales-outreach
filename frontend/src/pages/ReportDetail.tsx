@@ -4,6 +4,7 @@ import { reportsAPI } from '../services/api';
 import { useToast } from '../components/Toast';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SkeletonCard } from '../components/Skeleton';
+import AIReport from '../components/AIReport';
 import { ArrowLeft, Download, Trash2, Calendar, User, FileBarChart } from 'lucide-react';
 
 interface Report {
@@ -111,7 +112,7 @@ const ReportDetail: React.FC = () => {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-primary" onClick={handleDownload}>
-            <Download size={18} /> Export PDF
+            <Download size={18} /> Download JSON
           </button>
           <button className="btn btn-danger" onClick={() => setShowDeleteConfirm(true)}>
             <Trash2 size={18} /> Delete
@@ -124,13 +125,7 @@ const ReportDetail: React.FC = () => {
           <div className="card">
             <h3 style={{ fontWeight: '600', marginBottom: '20px' }}>Report Data</h3>
 
-            {report.data && (
-              <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px', overflow: 'auto' }}>
-                <pre style={{ fontSize: '13px', margin: 0 }}>
-                  {JSON.stringify(report.data, null, 2)}
-                </pre>
-              </div>
-            )}
+            {report.data !== null && report.data !== undefined && <AIReport response={report.data} title={report.name} />}
           </div>
         </div>
 

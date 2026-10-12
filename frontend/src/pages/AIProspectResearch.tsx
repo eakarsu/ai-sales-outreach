@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import FullAIExamples, { useFullAIExamples } from '../components/FullAIExamples';
 import { useAuth } from '../hooks/useAuth';
 import { prospectResearchAPI, contactsAPI } from '../services/api';
 import { useToast } from '../components/Toast';
@@ -7,6 +8,7 @@ import { Pagination } from '../components/Pagination';
 import { Search, Sparkles, RefreshCw, User, Building2, Lightbulb, AlertTriangle } from 'lucide-react';
 
 const AIProspectResearch: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
   const { team, user } = useAuth();
   const { showToast } = useToast();
   const [research, setResearch] = useState<any[]>([]);
@@ -224,7 +226,8 @@ const AIProspectResearch: React.FC = () => {
       {/* Research Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" data-full-ai-workspace="AIProspectResearch">
+            <FullAIExamples controller={fullAIExamples} disabled={researching} />
             <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-violet-600" /> Research a Prospect
             </h2>
@@ -234,6 +237,7 @@ const AIProspectResearch: React.FC = () => {
               <select
                 value={selectedContactId}
                 onChange={e => setSelectedContactId(e.target.value)}
+                data-full-ai-field={fullAIExamples.bind({ current: selectedContactId, change: e => setSelectedContactId(e.target.value), label: 'selectedContactId', reference: true }, 'contact')}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent"
               >
                 <option value="">Choose a contact...</option>

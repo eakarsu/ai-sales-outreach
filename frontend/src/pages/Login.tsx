@@ -9,12 +9,16 @@ const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const demoAvailable = process.env.REACT_APP_ENABLE_DEMO_CREDENTIAL_AUTOFILL === 'true'
+    && Boolean(process.env.REACT_APP_DEMO_EMAIL && process.env.REACT_APP_DEMO_PASSWORD);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleAutoPopulate = () => {
+    if (!demoAvailable) return;
     setEmail(process.env.REACT_APP_DEMO_EMAIL || '');
     setPassword(process.env.REACT_APP_DEMO_PASSWORD || '');
+    setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,13 +70,13 @@ const Login: React.FC = () => {
             </div>
           )}
 
-          <button type="button" onClick={handleAutoPopulate} className="btn btn-secondary"
+          <button type="button" onClick={handleAutoPopulate} disabled={!demoAvailable} className="btn btn-secondary"
             style={{
               width: '100%', padding: '12px', marginBottom: '20px', display: 'flex',
               alignItems: 'center', justifyContent: 'center', gap: '8px',
               background: '#f0fdf4', border: '2px solid #22c55e', color: '#16a34a', fontWeight: '600'
             }}>
-            <UserCheck size={18} /> Auto Fill Demo Credentials
+            <UserCheck size={18} /> Fill Demo Credentials
           </button>
 
           <div className="form-group">
@@ -114,8 +118,7 @@ const Login: React.FC = () => {
         </form>
 
         <div style={{ marginTop: '24px', textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>
-          <p>Click the green button above to auto-fill demo credentials</p>
-          <p style={{ marginTop: '4px' }}>Or use any seeded email with password: <strong>password123</strong></p>
+          <p>{demoAvailable ? 'Use the button above to fill the configured demo credentials, then select Sign In.' : 'Demo credentials are not configured for this frontend session.'}</p>
         </div>
       </div>
     </div>

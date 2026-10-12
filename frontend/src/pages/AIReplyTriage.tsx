@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState } from 'react';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
@@ -9,6 +11,8 @@ const sample = JSON.stringify([
 ], null, 2);
 
 const AIReplyTriage: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const [replies, setReplies] = useState(sample);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState('');
@@ -35,7 +39,7 @@ const AIReplyTriage: React.FC = () => {
   };
 
   return (
-    <div className="page">
+    <div className="page" data-full-ai-workspace="AIReplyTriage"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading)} />
       <div className="page-header">
         <h1>Reply Triage</h1>
         <p>Prioritize inbound replies by intent, urgency, and next-best sales action.</p>
@@ -43,7 +47,7 @@ const AIReplyTriage: React.FC = () => {
       <div className="grid grid-2">
         <div className="card">
           <label>Replies JSON</label>
-          <textarea className="form-control" rows={14} value={replies} onChange={(event) => setReplies(event.target.value)} />
+          <textarea className="form-control" rows={14} value={replies} onChange={(event) => setReplies(event.target.value)} data-full-ai-field={fullAIExamples.bind({ current: replies, change: (event) => setReplies(event.target.value), label: "replies", manual: false, json: false, sample: sample }, "p1-1555", undefined)} />
           {error && <div className="alert alert-error">{error}</div>}
           <button className="btn btn-primary" onClick={run} disabled={loading}>{loading ? 'Triaging...' : 'Triage replies'}</button>
         </div>

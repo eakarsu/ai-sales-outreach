@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -8,6 +10,8 @@ import {
 } from 'lucide-react';
 
 const AIAssistant: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const navigate = useNavigate();
   const { team, user } = useAuth();
   const [activeTab, setActiveTab] = useState('generate');
@@ -193,7 +197,7 @@ John`
   ];
 
   return (
-    <div>
+    <div data-full-ai-workspace="AIAssistant"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading)} />
       <div className="page-header">
         <div>
           <h1 className="page-title">AI Assistant</h1>
@@ -235,7 +239,7 @@ John`
                 <select
                   className="form-input"
                   value={emailType}
-                  onChange={(e) => setEmailType(e.target.value)}
+                  onChange={(e) => setEmailType(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: emailType, change: (e) => setEmailType(e.target.value), label: "emailType", manual: false, json: false, sample: 'cold_outreach' }, "p1-7399", undefined)}
                 >
                   <option value="cold_outreach">Cold Outreach</option>
                   <option value="follow_up">Follow-up</option>
@@ -251,7 +255,7 @@ John`
                   className="form-input"
                   placeholder="e.g., John"
                   value={context.firstName}
-                  onChange={(e) => setContext({ ...context, firstName: e.target.value })}
+                  onChange={(e) => setContext({ ...context, firstName: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: context.firstName, change: (e) => setContext({ ...context, firstName: e.target.value }), label: "context.firstName", manual: false, json: false, sample: '' }, "p1-8029", undefined)}
                 />
               </div>
 
@@ -262,7 +266,7 @@ John`
                   className="form-input"
                   placeholder="e.g., Acme Corp"
                   value={context.company}
-                  onChange={(e) => setContext({ ...context, company: e.target.value })}
+                  onChange={(e) => setContext({ ...context, company: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: context.company, change: (e) => setContext({ ...context, company: e.target.value }), label: "context.company", manual: false, json: false, sample: '' }, "p1-8451", undefined)}
                 />
               </div>
 
@@ -273,7 +277,7 @@ John`
                   className="form-input"
                   placeholder="e.g., Technology"
                   value={context.industry}
-                  onChange={(e) => setContext({ ...context, industry: e.target.value })}
+                  onChange={(e) => setContext({ ...context, industry: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: context.industry, change: (e) => setContext({ ...context, industry: e.target.value }), label: "context.industry", manual: false, json: false, sample: '' }, "p1-8870", undefined)}
                 />
               </div>
 
@@ -284,7 +288,7 @@ John`
                   className="form-input"
                   placeholder="e.g., Recent funding round"
                   value={context.topic}
-                  onChange={(e) => setContext({ ...context, topic: e.target.value })}
+                  onChange={(e) => setContext({ ...context, topic: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: context.topic, change: (e) => setContext({ ...context, topic: e.target.value }), label: "context.topic", manual: false, json: false, sample: '' }, "p1-9308", undefined)}
                 />
               </div>
 
@@ -388,7 +392,7 @@ John`
                   className="form-input"
                   placeholder="Enter your subject line"
                   value={emailToImprove.subject}
-                  onChange={(e) => setEmailToImprove({ ...emailToImprove, subject: e.target.value })}
+                  onChange={(e) => setEmailToImprove({ ...emailToImprove, subject: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: emailToImprove.subject, change: (e) => setEmailToImprove({ ...emailToImprove, subject: e.target.value }), label: "emailToImprove.subject", manual: false, json: false, sample: '' }, "p1-13389", undefined)}
                 />
               </div>
 
@@ -399,7 +403,7 @@ John`
                   placeholder="Paste your email content here..."
                   value={emailToImprove.body}
                   onChange={(e) => setEmailToImprove({ ...emailToImprove, body: e.target.value })}
-                  style={{ minHeight: '150px' }}
+                  style={{ minHeight: '150px' }} data-full-ai-field={fullAIExamples.bind({ current: emailToImprove.body, change: (e) => setEmailToImprove({ ...emailToImprove, body: e.target.value }), label: "emailToImprove.body", manual: false, json: false, sample: '' }, "p1-13839", undefined)}
                 />
               </div>
 
@@ -525,7 +529,7 @@ John`
                   className="form-input"
                   placeholder="e.g., Acme Corp"
                   value={subjectContext.company}
-                  onChange={(e) => setSubjectContext({ ...subjectContext, company: e.target.value })}
+                  onChange={(e) => setSubjectContext({ ...subjectContext, company: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: subjectContext.company, change: (e) => setSubjectContext({ ...subjectContext, company: e.target.value }), label: "subjectContext.company", manual: false, json: false, sample: '' }, "p1-19212", undefined)}
                 />
               </div>
 
@@ -536,7 +540,7 @@ John`
                   className="form-input"
                   placeholder="e.g., LinkedIn post, funding announcement"
                   value={subjectContext.trigger}
-                  onChange={(e) => setSubjectContext({ ...subjectContext, trigger: e.target.value })}
+                  onChange={(e) => setSubjectContext({ ...subjectContext, trigger: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: subjectContext.trigger, change: (e) => setSubjectContext({ ...subjectContext, trigger: e.target.value }), label: "subjectContext.trigger", manual: false, json: false, sample: '' }, "p1-19668", undefined)}
                 />
               </div>
 
@@ -625,7 +629,7 @@ John`
                   className="form-input"
                   placeholder="Enter your subject line"
                   value={emailToAnalyze.subject}
-                  onChange={(e) => setEmailToAnalyze({ ...emailToAnalyze, subject: e.target.value })}
+                  onChange={(e) => setEmailToAnalyze({ ...emailToAnalyze, subject: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: emailToAnalyze.subject, change: (e) => setEmailToAnalyze({ ...emailToAnalyze, subject: e.target.value }), label: "emailToAnalyze.subject", manual: false, json: false, sample: '' }, "p1-23095", undefined)}
                 />
               </div>
 
@@ -636,7 +640,7 @@ John`
                   placeholder="Paste your email content here..."
                   value={emailToAnalyze.body}
                   onChange={(e) => setEmailToAnalyze({ ...emailToAnalyze, body: e.target.value })}
-                  style={{ minHeight: '200px' }}
+                  style={{ minHeight: '200px' }} data-full-ai-field={fullAIExamples.bind({ current: emailToAnalyze.body, change: (e) => setEmailToAnalyze({ ...emailToAnalyze, body: e.target.value }), label: "emailToAnalyze.body", manual: false, json: false, sample: '' }, "p1-23545", undefined)}
                 />
               </div>
 

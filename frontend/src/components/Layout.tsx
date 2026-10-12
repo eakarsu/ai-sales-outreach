@@ -1,3 +1,4 @@
+import AIReportLibrary from "./AIReportLibrary";
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -134,7 +135,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <span>Logout</span>
           </div>
         </div>
-      </nav>
+      <AIReportLibrary /></nav>
 
       <main className="main-content">
         {children}

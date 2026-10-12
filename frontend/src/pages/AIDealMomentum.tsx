@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import FullAIExamples, { useFullAIExamples } from '../components/FullAIExamples';
 import { useAuth } from '../hooks/useAuth';
 import { aiAPI, contactsAPI } from '../services/api';
 import { useToast } from '../components/Toast';
@@ -23,6 +24,7 @@ interface Momentum {
 }
 
 const AIDealMomentum: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
   const { team } = useAuth();
   const { showToast } = useToast();
   const [items, setItems] = useState<Momentum[]>([]);
@@ -141,12 +143,13 @@ const AIDealMomentum: React.FC = () => {
 
       {showModal && (
         <div className="modal-backdrop" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()} data-full-ai-workspace="AIDealMomentum">
             <div className="modal-header"><h2><RefreshCw size={20} /> Calculate Momentum</h2></div>
+            <FullAIExamples controller={fullAIExamples} disabled={calculating} />
             <div className="modal-body">
               <div className="form-group">
                 <label>Contact *</label>
-                <select value={contactId} onChange={e => setContactId(e.target.value)}>
+                <select value={contactId} onChange={e => setContactId(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: contactId, change: e => setContactId(e.target.value), label: 'selectedContactId', reference: true }, 'contact')}>
                   <option value="">Select contact...</option>
                   {contacts.map(c => <option key={c.id} value={c.id}>{c.firstName} {c.lastName} ({c.company})</option>)}
                 </select>

@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -27,6 +29,8 @@ interface LeadScore {
 }
 
 const AILeadScorer: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const navigate = useNavigate();
   const { team } = useAuth();
   const { showToast } = useToast();
@@ -270,14 +274,14 @@ const AILeadScorer: React.FC = () => {
       {/* Score Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }} data-full-ai-workspace="AILeadScorer"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading)} />
             <h2 style={{ marginBottom: '20px' }}>Score Lead with AI</h2>
             <div className="form-group">
               <label className="form-label">Select Contact</label>
               <select
                 className="form-input"
                 value={selectedContact}
-                onChange={(e) => setSelectedContact(e.target.value)}
+                onChange={(e) => setSelectedContact(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: selectedContact, change: (e) => setSelectedContact(e.target.value), label: "selectedContact", manual: false, json: false, sample: '' }, "p1-10827", undefined)}
               >
                 <option value="">Choose a contact...</option>
                 {contacts.map(c => (

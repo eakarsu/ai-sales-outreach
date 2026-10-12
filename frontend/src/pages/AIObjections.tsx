@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -27,6 +29,8 @@ interface Objection {
 }
 
 const AIObjections: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const navigate = useNavigate();
   const { team } = useAuth();
   const { showToast } = useToast();
@@ -271,7 +275,7 @@ const AIObjections: React.FC = () => {
       {/* Create Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }} data-full-ai-workspace="AIObjections"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading)} />
             <h2 style={{ marginBottom: '20px' }}>Handle New Objection with AI</h2>
 
             <div className="form-group">
@@ -281,14 +285,14 @@ const AIObjections: React.FC = () => {
                 rows={3}
                 value={formData.objectionText}
                 onChange={(e) => setFormData({ ...formData, objectionText: e.target.value })}
-                placeholder='e.g., "Your solution is too expensive for our budget."'
+                placeholder='e.g., "Your solution is too expensive for our budget."' data-full-ai-field={fullAIExamples.bind({ current: formData.objectionText, change: (e) => setFormData({ ...formData, objectionText: e.target.value }), label: "formData.objectionText", manual: false, json: false, sample: '' }, "p1-11768", undefined)}
               />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
               <div className="form-group">
                 <label className="form-label">Industry</label>
-                <select className="form-input" value={formData.industry} onChange={(e) => setFormData({ ...formData, industry: e.target.value })}>
+                <select className="form-input" value={formData.industry} onChange={(e) => setFormData({ ...formData, industry: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: formData.industry, change: (e) => setFormData({ ...formData, industry: e.target.value }), label: "formData.industry", manual: false, json: false, sample: 'General' }, "p1-12322", undefined)}>
                   <option value="General">General</option>
                   <option value="Technology">Technology</option>
                   <option value="Finance">Finance</option>
@@ -299,7 +303,7 @@ const AIObjections: React.FC = () => {
               </div>
               <div className="form-group">
                 <label className="form-label">Buyer Persona</label>
-                <select className="form-input" value={formData.buyerPersona} onChange={(e) => setFormData({ ...formData, buyerPersona: e.target.value })}>
+                <select className="form-input" value={formData.buyerPersona} onChange={(e) => setFormData({ ...formData, buyerPersona: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: formData.buyerPersona, change: (e) => setFormData({ ...formData, buyerPersona: e.target.value }), label: "formData.buyerPersona", manual: false, json: false, sample: 'Decision Maker' }, "p1-12991", undefined)}>
                   <option value="Decision Maker">Decision Maker</option>
                   <option value="Executive">Executive</option>
                   <option value="Manager">Manager</option>
@@ -309,7 +313,7 @@ const AIObjections: React.FC = () => {
               </div>
               <div className="form-group">
                 <label className="form-label">Sales Stage</label>
-                <select className="form-input" value={formData.salesStage} onChange={(e) => setFormData({ ...formData, salesStage: e.target.value })}>
+                <select className="form-input" value={formData.salesStage} onChange={(e) => setFormData({ ...formData, salesStage: e.target.value })} data-full-ai-field={fullAIExamples.bind({ current: formData.salesStage, change: (e) => setFormData({ ...formData, salesStage: e.target.value }), label: "formData.salesStage", manual: false, json: false, sample: 'Discovery' }, "p1-13613", undefined)}>
                   <option value="Discovery">Discovery</option>
                   <option value="Demo">Demo</option>
                   <option value="Proposal">Proposal</option>

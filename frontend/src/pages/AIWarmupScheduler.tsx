@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { warmupAPI } from '../services/api';
@@ -7,6 +9,8 @@ import { Pagination } from '../components/Pagination';
 import { Flame, Plus, Calendar, Mail, RefreshCw, ChevronRight, Sparkles, CheckCircle } from 'lucide-react';
 
 const AIWarmupScheduler: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const { team, user } = useAuth();
   const { showToast } = useToast();
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -229,7 +233,7 @@ const AIWarmupScheduler: React.FC = () => {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" data-full-ai-workspace="AIWarmupScheduler"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading)} />
             <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-orange-500" /> Create AI Warmup Schedule
             </h2>
@@ -242,7 +246,7 @@ const AIWarmupScheduler: React.FC = () => {
                   value={form.emailAddress}
                   onChange={e => setForm(f => ({ ...f, emailAddress: e.target.value }))}
                   placeholder="outreach@yourcompany.com"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent" data-full-ai-field={fullAIExamples.bind({ current: form.emailAddress, change: e => setForm(f => ({ ...f, emailAddress: e.target.value })), label: "form.emailAddress", manual: false, json: false, sample: '' }, "p1-11058", undefined)}
                 />
               </div>
               <div>
@@ -252,7 +256,7 @@ const AIWarmupScheduler: React.FC = () => {
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="Q2 Outreach Warmup"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent" data-full-ai-field={fullAIExamples.bind({ current: form.name, change: e => setForm(f => ({ ...f, name: e.target.value })), label: "form.name", manual: false, json: false, sample: '' }, "p1-11613", undefined)}
                 />
               </div>
               <div>
@@ -260,7 +264,7 @@ const AIWarmupScheduler: React.FC = () => {
                 <select
                   value={form.totalDays}
                   onChange={e => setForm(f => ({ ...f, totalDays: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400 focus:border-transparent" data-full-ai-field={fullAIExamples.bind({ current: form.totalDays, change: e => setForm(f => ({ ...f, totalDays: e.target.value })), label: "form.totalDays", manual: false, json: false, sample: '30' }, "p1-12147", undefined)}
                 >
                   <option value="14">14 days (Quick)</option>
                   <option value="30">30 days (Recommended)</option>

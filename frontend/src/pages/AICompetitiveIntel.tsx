@@ -1,3 +1,5 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples";
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { competitiveIntelAPI } from '../services/api';
@@ -7,6 +9,8 @@ import { Pagination } from '../components/Pagination';
 import { Globe, Plus, Sparkles, Shield, TrendingUp, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 
 const AICompetitiveIntel: React.FC = () => {
+  const fullAIExamples = useFullAIExamples();
+
   const { team, user } = useAuth();
   const { showToast } = useToast();
   const [analyses, setAnalyses] = useState<any[]>([]);
@@ -193,7 +197,7 @@ const AICompetitiveIntel: React.FC = () => {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg" data-full-ai-workspace="AICompetitiveIntel"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading || analyzing)} />
             <h2 className="text-xl font-bold text-gray-900 mb-1 flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-indigo-500" /> Run Competitive Analysis
             </h2>
@@ -206,7 +210,7 @@ const AICompetitiveIntel: React.FC = () => {
                   value={form.industry}
                   onChange={e => setForm(f => ({ ...f, industry: e.target.value }))}
                   placeholder="e.g. B2B SaaS, FinTech, Healthcare"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-full-ai-field={fullAIExamples.bind({ current: form.industry, change: e => setForm(f => ({ ...f, industry: e.target.value })), label: "form.industry", manual: false, json: false, sample: 'Technology' }, "p1-9477", undefined)}
                 />
               </div>
               <div>
@@ -216,7 +220,7 @@ const AICompetitiveIntel: React.FC = () => {
                   value={form.companyName}
                   onChange={e => setForm(f => ({ ...f, companyName: e.target.value }))}
                   placeholder="Your company name"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-full-ai-field={fullAIExamples.bind({ current: form.companyName, change: e => setForm(f => ({ ...f, companyName: e.target.value })), label: "form.companyName", manual: false, json: false, sample: '' }, "p1-10037", undefined)}
                 />
               </div>
               <div>
@@ -226,7 +230,7 @@ const AICompetitiveIntel: React.FC = () => {
                   onChange={e => setForm(f => ({ ...f, ourProduct: e.target.value }))}
                   rows={2}
                   placeholder="Briefly describe what your product does..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-full-ai-field={fullAIExamples.bind({ current: form.ourProduct, change: e => setForm(f => ({ ...f, ourProduct: e.target.value })), label: "form.ourProduct", manual: false, json: false, sample: '' }, "p1-10592", undefined)}
                 />
               </div>
               <div>
@@ -236,7 +240,7 @@ const AICompetitiveIntel: React.FC = () => {
                   value={form.targetCompetitors}
                   onChange={e => setForm(f => ({ ...f, targetCompetitors: e.target.value }))}
                   placeholder="Outreach.io, Salesloft, Apollo.io"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-full-ai-field={fullAIExamples.bind({ current: form.targetCompetitors, change: e => setForm(f => ({ ...f, targetCompetitors: e.target.value })), label: "form.targetCompetitors", manual: false, json: false, sample: '' }, "p1-11182", undefined)}
                 />
               </div>
             </div>
